@@ -1,0 +1,91 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Officer Promotion Simulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Officer Promotion Simulator</h1>
+        <input type="file" id="fileInput" accept=".xlsx">
+        <div id="result"></div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+
+/* style.css */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+}
+.container {
+    max-width: 900px;
+    margin: 30px auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+h1 {
+    text-align: center;
+}
+#result {
+    margin-top: 30px;
+    overflow-x: auto;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+th {
+    background-color: #f2f2f2;
+}
+
+// script.js
+document.getElementById('fileInput').addEventListener('change', () => {
+    const fileInput = document.getElementById('fileInput');
+    if (!fileInput.files.length) {
+        alert('Please upload an Excel file first.');
+        return;
+    }
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+        displayTable(jsonData);
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+function displayTable(data) {
+    let html = '<table><thead><tr>';
+    Object.keys(data[0]).forEach(col => {
+        html += `<th>${col}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    data.forEach(row => {
+        html += '<tr>';
+        Object.values(row).forEach(val => {
+            html += `<td>${val ?? ''}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('result').innerHTML = html;
+}
