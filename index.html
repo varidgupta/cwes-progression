@@ -1,91 +1,104 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Officer Promotion Simulator</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 900px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background: #eee; }
+        input[type="number"], input[type="date"] { width: 100%; padding: 5px; }
+        button { padding: 10px 20px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Officer Promotion Simulator</h1>
-        <input type="file" id="fileInput" accept=".xlsx">
-        <div id="result"></div>
+<div class="container">
+    <h1>Officer Promotion Simulator</h1>
+
+    <!-- Sanctioned Strength Table -->
+    <h2>Sanctioned Strength</h2>
+    <table id="sanctionedStrengthTable">
+        <tr>
+            <th>Rank</th>
+            <th>Strength</th>
+        </tr>
+        <tr><td>Apex</td><td><input type="number" value="1"></td></tr>
+        <tr><td>HAG</td><td><input type="number" value="6"></td></tr>
+        <tr><td>SAG</td><td><input type="number" value="46"></td></tr>
+        <tr><td>JAG</td><td><input type="number" value="164"></td></tr>
+        <tr><td>STS</td><td><input type="number" value="249"></td></tr>
+        <tr><td>JTS</td><td><input type="number" value="262"></td></tr>
+    </table>
+
+    <!-- Promotion Criteria Table -->
+    <h2>Promotion Criteria (Years)</h2>
+    <table id="promotionCriteriaTable">
+        <tr>
+            <th>Rank</th>
+            <th>Criteria</th>
+            <th>Value</th>
+        </tr>
+        <tr><td>Apex</td><td>Min Years at HAG</td><td><input type="number" step="0.1" value="2"></td></tr>
+        <tr><td>HAG</td><td>Min Years from JTS</td><td><input type="number" value="25"></td></tr>
+        <tr><td>HAG</td><td>Min Years at SAG</td><td><input type="number" value="1"></td></tr>
+        <tr><td>HAG</td><td>Or Min Years at SAG</td><td><input type="number" value="3"></td></tr>
+        <tr><td>SAG</td><td>Min Years from JTS</td><td><input type="number" value="17"></td></tr>
+        <tr><td>SAG</td><td>Min Years at JAG</td><td><input type="number" value="1"></td></tr>
+        <tr><td>SAG</td><td>Or Min Years at JAG</td><td><input type="number" value="3"></td></tr>
+        <tr><td>JAG</td><td>Min Years from JTS</td><td><input type="number" value="13"></td></tr>
+        <tr><td>JAG</td><td>Min Years at STS</td><td><input type="number" value="4"></td></tr>
+        <tr><td>JAG</td><td>Or Min Years at STS</td><td><input type="number" value="9"></td></tr>
+        <tr><td>STS</td><td>Min Years at JTS</td><td><input type="number" value="4"></td></tr>
+    </table>
+
+    <!-- Simulation Start Date -->
+    <h2>Simulation Start Date</h2>
+    <input type="date" id="startDate" value="2024-12-01">
+
+    <!-- Execute Button -->
+    <div style="margin-top: 20px; text-align: center;">
+        <button onclick="executeSimulation()">Execute Simulation</button>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js"></script>
+
+    <!-- Results -->
+    <h2>Results</h2>
+    <div id="result"></div>
+</div>
+
+<script>
+function executeSimulation() {
+    // Gather inputs from the tables
+    const sanctionedStrength = {};
+    document.querySelectorAll('#sanctionedStrengthTable tr').forEach((row, i) => {
+        if (i === 0) return;
+        const rank = row.cells[0].innerText;
+        const value = parseInt(row.cells[1].querySelector('input').value);
+        sanctionedStrength[rank] = value;
+    });
+
+    const promotionCriteria = {};
+    document.querySelectorAll('#promotionCriteriaTable tr').forEach((row, i) => {
+        if (i === 0) return;
+        const rank = row.cells[0].innerText;
+        const criteriaName = row.cells[1].innerText;
+        const value = parseFloat(row.cells[2].querySelector('input').value);
+        if (!promotionCriteria[rank]) promotionCriteria[rank] = {};
+        promotionCriteria[rank][criteriaName.replace(/ /g, '_').toLowerCase()] = value;
+    });
+
+    const startDate = document.getElementById('startDate').value;
+
+    // Example output (replace with actual simulation logic or API call)
+    document.getElementById('result').innerHTML =
+        `<pre>Sanctioned Strength: ${JSON.stringify(sanctionedStrength, null, 2)}
+Promotion Criteria: ${JSON.stringify(promotionCriteria, null, 2)}
+Start Date: ${startDate}</pre>`;
+}
+</script>
 </body>
 </html>
-
-/* style.css */
-body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
-    margin: 0;
-    padding: 0;
-}
-.container {
-    max-width: 900px;
-    margin: 30px auto;
-    background: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-}
-h1 {
-    text-align: center;
-}
-#result {
-    margin-top: 30px;
-    overflow-x: auto;
-}
-table {
-    border-collapse: collapse;
-    width: 100%;
-}
-th, td {
-    border: 1px solid #ddd;
-    padding: 8px;
-    text-align: left;
-}
-th {
-    background-color: #f2f2f2;
-}
-
-// script.js
-document.getElementById('fileInput').addEventListener('change', () => {
-    const fileInput = document.getElementById('fileInput');
-    if (!fileInput.files.length) {
-        alert('Please upload an Excel file first.');
-        return;
-    }
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(sheet);
-        displayTable(jsonData);
-    };
-    reader.readAsArrayBuffer(file);
-});
-
-function displayTable(data) {
-    let html = '<table><thead><tr>';
-    Object.keys(data[0]).forEach(col => {
-        html += `<th>${col}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-    data.forEach(row => {
-        html += '<tr>';
-        Object.values(row).forEach(val => {
-            html += `<td>${val ?? ''}</td>`;
-        });
-        html += '</tr>';
-    });
-    html += '</tbody></table>';
-    document.getElementById('result').innerHTML = html;
-}
