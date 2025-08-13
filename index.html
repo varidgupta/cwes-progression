@@ -7,26 +7,32 @@
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
         .container { max-width: 900px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px; }
-        h1, h2 { text-align: center; }
+        h1 { text-align: center; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
         th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
         th { background: #eee; }
         input[type="number"], input[type="date"], select { width: 100%; padding: 5px; }
         button { padding: 10px 20px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #0056b3; }
+        .scroll-pane { max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; }
+        pre { background: #f0f0f0; padding: 10px; border-radius: 4px; }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>Officer Promotion Simulator</h1>
 
-    <!-- Officer List -->
-    <h2>Officer List</h2>
-    <div style="max-height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px;">
-        <table id="officerListTable" border="1" cellpadding="5" cellspacing="0" style="width:100%; border-collapse: collapse;"></table>
+    <h2>Officers List</h2>
+    <div class="scroll-pane">
+        <table id="officerListTable">
+            <thead></thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <div style="text-align:center; margin-bottom:20px;">
+        <button id="refreshBtn">Refresh List</button>
     </div>
 
-    <!-- Sanctioned Strength Table -->
     <h2>Sanctioned Strength</h2>
     <table id="sanctionedStrengthTable">
         <tr>
@@ -42,7 +48,6 @@
         <tr><td>JTS</td><td><input type="number" value="262"></td><td><input type="number" value="2"></td></tr>
     </table>
 
-    <!-- Promotion Criteria Table -->
     <h2>Promotion Criteria (Years)</h2>
     <table id="promotionCriteriaTable">
         <tr>
@@ -51,92 +56,386 @@
             <th>Value</th>
             <th>Regular Service From</th>
         </tr>
-        <tr><td>Apex</td><td>Min Years at HAG</td><td><input type="number" step="0.1" value="2"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>HAG</td><td>Min Years from JTS</td><td><input type="number" value="25"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>HAG</td><td>Min Years at SAG</td><td><input type="number" value="1"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>HAG</td><td>Or Min Years at SAG</td><td><input type="number" value="3"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>SAG</td><td>Min Years from JTS</td><td><input type="number" value="17"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>SAG</td><td>Min Years at JAG</td><td><input type="number" value="1"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>SAG</td><td>Or Min Years at JAG</td><td><input type="number" value="3"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>JAG</td><td>Min Years from JTS</td><td><input type="number" value="13"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>JAG</td><td>Min Years at STS</td><td><input type="number" value="4"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>JAG</td><td>Or Min Years at STS</td><td><input type="number" value="9"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
-        <tr><td>STS</td><td>Min Years at JTS</td><td><input type="number" value="4"></td><td><select><option>regular service from 1st Jan of following year</option><option>regular service from 1st Jan of same year</option><option>regular service from date of assuming the post</option></select></td></tr>
+        <!-- Table rows remain unchanged -->
     </table>
 
-    <!-- Simulation Start Date -->
     <h2>Simulation Start Date</h2>
     <input type="date" id="startDate" value="2024-12-01">
 
-    <!-- Execute Button -->
     <div style="margin-top: 20px; text-align: center;">
-        <button onclick="executeSimulation()">Execute Simulation</button>
+        <button id="executeBtn">Execute Simulation</button>
     </div>
 
-    <!-- Results -->
     <h2>Results</h2>
     <div id="result"></div>
+
+    <h3>Results (JSON)</h3>
+    <div class="scroll-pane">
+    <pre id="jsonResultPane"></pre>
+    </div>
+    <a id="downloadJsonLink" href="#" download="simulation_results.json" style="display:none;">Download JSON</a>
+
 </div>
 
 <script>
-function excelSerialToDate(serial) {
-    if (typeof serial !== 'number') return serial;
-    let utc_days = Math.floor(serial - 25569);
-    let utc_value = utc_days * 86400; 
-    let date_info = new Date(utc_value * 1000);
-    return date_info.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+// ---------- Utilities ----------
+function formatDateDDMMYYYY(dateStr) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (isNaN(date)) return "";
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
+function parseDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function addDays(d, n) {
+  const dd = new Date(d);
+  dd.setDate(dd.getDate() + n);
+  return dd;
+}
+function addMonths(d, n) {
+  const dd = new Date(d);
+  dd.setMonth(dd.getMonth() + n);
+  return dd;
+}
+function yearsBetween(from, to) {
+  if (!from || !to) return 0;
+  return (to - from) / (365 * 24 * 60 * 60 * 1000);
+}
+
+// ---------- Data Loading & Table Rendering ----------
+let OFFICERS = []; // in-memory officers list
 
 function loadOfficerList() {
-    fetch('officers_list_1.json') // Assume JSON generated from Excel on server
-        .then(response => response.json())
-        .then(data => {
-            const table = document.getElementById('officerListTable');
-            table.innerHTML = '';
-            data.forEach((row, i) => {
-                let tr = document.createElement('tr');
-                row.forEach(cell => {
-                    let td = document.createElement(i === 0 ? 'th' : 'td');
-                    if (!isNaN(cell) && cell > 20000 && cell < 50000) {
-                        td.textContent = excelSerialToDate(cell);
-                    } else {
-                        td.textContent = cell;
-                    }
-                    tr.appendChild(td);
-                });
-                table.appendChild(tr);
-            });
+  fetch('officers_list_1.json')
+    .then(res => res.json())
+    .then(data => {
+      // Normalize a few expected keys and filter out retired
+      const today = new Date();
+
+      OFFICERS = data
+        .filter(o => {
+          const ret = o['RetirementDate'] || o['Date_of_Retirement'];
+          if (!ret) return true;
+          return parseDate(ret) >= today;
+        })
+        .map(o => ({
+          // keep originals but ensure some canonical keys
+          ...o,
+          ID: o.ID ?? o.Id ?? o.id,
+          CurrentRank: o['Current Rank'] ?? o['Current_Rank'] ?? o['Rank'] ?? o['currentRank'],
+          DOJ: o['Date_of_Joining'] ?? o['DOJ'],
+          P_STS: o['Promotion_Date_to_STS'] ?? o['PromotionDateToSTS'],
+          P_JAG: o['Promotion_Date_to_JAG'] ?? o['PromotionDateToJAG'],
+          P_SAG: o['Promotion_Date_to_SAG'] ?? o['PromotionDateToSAG'],
+          P_HAG: o['Promotion_Date_to_HAG'] ?? o['PromotionDateToHAG'],
+          P_Apex: o['Promotion_Date_to_Apex'] ?? o['PromotionDateToApex'],
+          Retirement: o['RetirementDate'] ?? o['Date_of_Retirement']
+        }));
+
+      // Render table
+      const table = document.getElementById('officerListTable');
+      const thead = table.querySelector('thead');
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = '';
+
+      if (OFFICERS.length > 0) {
+        const cols = Object.keys(OFFICERS[0]);
+        thead.innerHTML = '<tr>' + cols.map(k => `<th>${k}</th>`).join('') + '</tr>';
+        OFFICERS.forEach(row => {
+          const tr = document.createElement('tr');
+          cols.forEach(key => {
+            const td = document.createElement('td');
+            const val = row[key];
+            td.textContent = String(key).toLowerCase().includes('date') || /^(DOJ|P_|Retirement)$/.test(key)
+              ? formatDateDDMMYYYY(val)
+              : (val ?? '');
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
         });
+      }
+    })
+    .catch(err => console.error('Error loading officer list:', err));
 }
 
+// ---------- Promotion Criteria UI (adds rows + “Regular Service From”) ----------
+const RANKS = ["STS","JAG","SAG","HAG","Apex"]; // promotion targets in ascending order
+const FEEDER = { STS:"JTS", JAG:"STS", SAG:"JAG", HAG:"SAG", Apex:"HAG" };
+
+const DEFAULT_CRITERIA = {
+  Apex: { rows: [{criteria:"min_years_at_HAG", value:2, serviceFrom:"P_HAG"}] },
+  HAG:  { rows: [
+           {criteria:"min_years_from_JTS", value:25, serviceFrom:"DOJ"},
+           {criteria:"min_years_at_SAG", value:1, serviceFrom:"P_SAG"},
+           {criteria:"or_min_years_at_SAG", value:3, serviceFrom:"P_SAG"},
+         ]},
+  SAG:  { rows: [
+           {criteria:"min_years_from_JTS", value:17, serviceFrom:"DOJ"},
+           {criteria:"min_years_at_JAG", value:1, serviceFrom:"P_JAG"},
+           {criteria:"or_min_years_at_JAG", value:3, serviceFrom:"P_JAG"},
+         ]},
+  JAG:  { rows: [
+           {criteria:"min_years_from_JTS", value:13, serviceFrom:"DOJ"},
+           {criteria:"min_years_at_STS", value:4, serviceFrom:"P_STS"},
+           {criteria:"or_min_years_at_STS", value:9, serviceFrom:"P_STS"},
+         ]},
+  STS:  { rows: [{criteria:"min_years_at_JTS", value:4, serviceFrom:"DOJ"}] }
+};
+
+function buildPromotionCriteriaTable() {
+  const table = document.getElementById('promotionCriteriaTable');
+  // header row already exists
+  // add rows dynamically for each target rank
+  RANKS.concat("STS").forEach(rank => { /* ensure STS included once */ });
+  const existingRows = table.querySelectorAll('tr').length;
+  if (existingRows > 1) return; // already built
+
+  const addRow = (rank, criteriaName, value, serviceFrom) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${rank}</td>
+      <td>${criteriaName}</td>
+      <td><input type="number" step="0.01" value="${value}"></td>
+      <td>
+        <select>
+          <option value="DOJ"${serviceFrom==="DOJ"?" selected":""}>From DOJ (JTS regular service)</option>
+          <option value="P_STS"${serviceFrom==="P_STS"?" selected":""}>From STS date</option>
+          <option value="P_JAG"${serviceFrom==="P_JAG"?" selected":""}>From JAG date</option>
+          <option value="P_SAG"${serviceFrom==="P_SAG"?" selected":""}>From SAG date</option>
+          <option value="P_HAG"${serviceFrom==="P_HAG"?" selected":""}>From HAG date</option>
+        </select>
+      </td>
+    `;
+    table.appendChild(tr);
+  };
+
+  ["STS","JAG","SAG","HAG","Apex"].forEach(rank => {
+    DEFAULT_CRITERIA[rank].rows.forEach(r => addRow(rank, r.criteria, r.value, r.serviceFrom));
+  });
+}
+
+// ---------- Reading inputs from UI ----------
+function readSanctionedStrength() {
+  // capacity = sanctioned + deputation (per your request)
+  const capacity = {};
+  document.querySelectorAll('#sanctionedStrengthTable tr').forEach((row, i) => {
+    if (i === 0) return;
+    const rank = row.cells[0].innerText.trim();
+    const sanctioned = parseInt(row.cells[1].querySelector('input').value || '0', 10);
+    const deputation = parseInt(row.cells[2].querySelector('input').value || '0', 10);
+    capacity[rank] = sanctioned + deputation;
+  });
+  return capacity;
+}
+
+function readPromotionCriteria() {
+  const criteria = {};
+  document.querySelectorAll('#promotionCriteriaTable tr').forEach((row, i) => {
+    if (i === 0) return;
+    const rank = row.cells[0].innerText.trim();
+    const criteriaName = row.cells[1].innerText.trim();
+    const value = parseFloat(row.cells[2].querySelector('input').value);
+    const serviceFrom = row.cells[3].querySelector('select').value; // DOJ, P_STS, P_JAG, P_SAG, P_HAG
+    if (!criteria[rank]) criteria[rank] = {};
+    criteria[rank][criteriaName] = { value, serviceFrom };
+  });
+  return criteria;
+}
+
+// ---------- Eligibility using "Regular Service From" ----------
+function getDateFor(off, token) {
+  // token ∈ {"DOJ","P_STS","P_JAG","P_SAG","P_HAG"}
+  switch (token) {
+    case "DOJ":  return parseDate(off.DOJ);
+    case "P_STS":return parseDate(off.P_STS);
+    case "P_JAG":return parseDate(off.P_JAG);
+    case "P_SAG":return parseDate(off.P_SAG);
+    case "P_HAG":return parseDate(off.P_HAG);
+    default:     return null;
+  }
+}
+
+function eligible(off, targetRank, now, crit) {
+  const feeder = FEEDER[targetRank];
+  if (!feeder) return false;
+  if ((off.CurrentRank || "").toUpperCase() !== feeder.toUpperCase()) return false;
+
+  const C = crit[targetRank] || {};
+  const need = (name) => C[name] ? C[name].value : null;
+  const from = (name, fallbackToken) => {
+    const token = (C[name] && C[name].serviceFrom) || fallbackToken;
+    return getDateFor(off, token);
+  };
+
+  // Build per-rank rules mirroring your Python logic, but respecting serviceFrom
+  if (targetRank === "STS") {
+    const yrs = yearsBetween(from("min_years_at_JTS", "DOJ"), now);
+    return yrs >= (need("min_years_at_JTS") ?? Infinity);
+  }
+  if (targetRank === "JAG") {
+    const yrsFromJTS = yearsBetween(from("min_years_from_JTS", "DOJ"), now);
+    const yrsAtSTS   = yearsBetween(from("min_years_at_STS", "P_STS"), now);
+    const laneA = yrsFromJTS >= (need("min_years_from_JTS") ?? Infinity) &&
+                  yrsAtSTS   >= (need("min_years_at_STS") ?? Infinity);
+    const laneB = yrsAtSTS   >= (need("or_min_years_at_STS") ?? Infinity);
+    return laneA || laneB;
+  }
+  if (targetRank === "SAG") {
+    const yrsFromJTS = yearsBetween(from("min_years_from_JTS", "DOJ"), now);
+    const yrsAtJAG   = yearsBetween(from("min_years_at_JAG", "P_JAG"), now);
+    const laneA = yrsFromJTS >= (need("min_years_from_JTS") ?? Infinity) &&
+                  yrsAtJAG   >= (need("min_years_at_JAG") ?? Infinity);
+    const laneB = yrsAtJAG   >= (need("or_min_years_at_JAG") ?? Infinity);
+    return laneA || laneB;
+  }
+  if (targetRank === "HAG") {
+    const yrsFromJTS = yearsBetween(from("min_years_from_JTS", "DOJ"), now);
+    const yrsAtSAG   = yearsBetween(from("min_years_at_SAG", "P_SAG"), now);
+    const laneA = yrsFromJTS >= (need("min_years_from_JTS") ?? Infinity) &&
+                  yrsAtSAG   >= (need("min_years_at_SAG") ?? Infinity);
+    const laneB = yrsAtSAG   >= (need("or_min_years_at_SAG") ?? Infinity);
+    return laneA || laneB;
+  }
+  if (targetRank === "Apex") {
+    const yrsAtHAG = yearsBetween(from("min_years_at_HAG", "P_HAG"), now);
+    return yrsAtHAG >= (need("min_years_at_HAG") ?? Infinity);
+  }
+  return false;
+}
+
+// ---------- Simulation ----------
 function executeSimulation() {
-    const sanctionedStrength = {};
-    document.querySelectorAll('#sanctionedStrengthTable tr').forEach((row, i) => {
-        if (i === 0) return;
-        const rank = row.cells[0].innerText;
-        const value = parseInt(row.cells[1].querySelector('input').value);
-        const deputation = parseInt(row.cells[2].querySelector('input').value);
-        sanctionedStrength[rank] = { strength: value, deputation: deputation };
+  if (!OFFICERS.length) {
+    document.getElementById('result').innerHTML = `<pre>No officers loaded.</pre>`;
+    return;
+  }
+
+  const capacity = readSanctionedStrength(); // capacity = sanctioned + deputation
+  const criteria = readPromotionCriteria();
+  const startDate = parseDate(document.getElementById('startDate').value);
+  const lastRet = OFFICERS.reduce((mx, o) => {
+    const r = parseDate(o.Retirement);
+    return (!mx || (r && r > mx)) ? r : mx;
+  }, null) || startDate;
+
+  // Compute incumbents per rank and vacancies = capacity - incumbents
+  const ranksAll = ["JTS","STS","JAG","SAG","HAG","Apex"];
+  const incumbents = Object.fromEntries(ranksAll.map(r => [r, 0]));
+  OFFICERS.forEach(o => {
+    const rk = (o.CurrentRank || o['Current Rank'] || '').trim();
+    if (incumbents[rk] !== undefined) incumbents[rk]++;
+  });
+  const vacancies = Object.fromEntries(ranksAll.map(r => [
+    r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))
+  ]));
+
+  // Deep copy officers for mutation during simulation
+  const officers = OFFICERS.map(o => ({ ...o }));
+
+  // Helper to set promotion and cascade vacancy (one level per cycle)
+  function promote(off, targetRank, when) {
+    const feeder = FEEDER[targetRank];
+    if (!feeder) return;
+
+    // set promotion date field on the record
+    const keyMap = { STS:'P_STS', JAG:'P_JAG', SAG:'P_SAG', HAG:'P_HAG', Apex:'P_Apex' };
+    off[keyMap[targetRank]] = when.toISOString();
+
+    // update rank & vacancies
+    off.CurrentRank = targetRank;
+    vacancies[targetRank] = Math.max(0, (vacancies[targetRank] ?? 0) - 1);
+    vacancies[feeder] = (vacancies[feeder] ?? 0) + 1;
+  }
+
+  // Simulate month-by-month using calendar months
+  let now = new Date(startDate);
+  while (now <= lastRet) {
+    const windowEnd = addMonths(now, 1);
+
+    // retirements within [now, windowEnd)
+    officers.forEach(off => {
+      const ret = parseDate(off.Retirement);
+      if (ret && ret >= now && ret < windowEnd) {
+        const r = (off.CurrentRank || '').trim();
+        if (vacancies[r] !== undefined) vacancies[r] += 1;
+        off._retired = true; // mark so they won't be promoted later
+      }
     });
 
-    const promotionCriteria = {};
-    document.querySelectorAll('#promotionCriteriaTable tr').forEach((row, i) => {
-        if (i === 0) return;
-        const rank = row.cells[0].innerText;
-        const criteriaName = row.cells[1].innerText;
-        const value = parseFloat(row.cells[2].querySelector('input').value);
-        const serviceFrom = row.cells[3].querySelector('select').value;
-        if (!promotionCriteria[rank]) promotionCriteria[rank] = [];
-        promotionCriteria[rank].push({ criteria: criteriaName, value: value, serviceFrom: serviceFrom });
+    // promotions top-down, one level per cycle, apply a seniority rule (DOJ asc)
+    ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
+      if ((vacancies[targetRank] ?? 0) <= 0) return;
+
+      const feeder = FEEDER[targetRank];
+      const candidates = officers
+        .filter(off => !off._retired)
+        .filter(off => (off.CurrentRank || '').toUpperCase() === feeder.toUpperCase())
+        .filter(off => eligible(off, targetRank, now, criteria))
+        .sort((a, b) => {
+          const da = parseDate(a.DOJ), db = parseDate(b.DOJ);
+          return (da?.getTime() || 0) - (db?.getTime() || 0);
+        });
+
+      let slots = vacancies[targetRank];
+      for (let i = 0; i < candidates.length && slots > 0; i++) {
+        promote(candidates[i], targetRank, addDays(now, 1));
+        slots--;
+      }
     });
 
-    const startDate = document.getElementById('startDate').value;
+    now = windowEnd;
+  }
 
-    document.getElementById('result').innerHTML =
-        `<pre>Sanctioned Strength: ${JSON.stringify(sanctionedStrength, null, 2)}\n\nPromotion Criteria: ${JSON.stringify(promotionCriteria, null, 2)}\n\nStart Date: ${startDate}</pre>`;
+  // -------- Build JSON result + display + download link --------
+  const result = {
+    startedOn: startDate.toISOString(),
+    capacityPerRank: capacity,
+    finalVacancies: vacancies,
+    officers: officers.map(o => ({
+      ID: o.ID,
+      Name: o.Name ?? o['Name'],
+      CurrentRank: o.CurrentRank,
+      DOJ: o.DOJ,
+      Promotion_Date_to_STS: o.P_STS ?? null,
+      Promotion_Date_to_JAG: o.P_JAG ?? null,
+      Promotion_Date_to_SAG: o.P_SAG ?? null,
+      Promotion_Date_to_HAG: o.P_HAG ?? null,
+      Promotion_Date_to_Apex: o.P_Apex ?? null,
+      RetirementDate: o.Retirement
+    }))
+  };
+
+  // Pretty print in the JSON pane
+  const pretty = JSON.stringify(result, null, 2);
+  document.getElementById('jsonResultPane').textContent = pretty;
+
+  // Also show a quick human summary
+  document.getElementById('result').innerHTML =
+    `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}
+Final Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
+
+  // Create a downloadable JSON blob
+  const blob = new Blob([pretty], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.getElementById('downloadJsonLink');
+  a.href = url;
+  a.style.display = 'inline-block';
 }
 
-window.onload = loadOfficerList;
+// ---------- Init ----------
+document.addEventListener('DOMContentLoaded', () => {
+  loadOfficerList();
+  buildPromotionCriteriaTable();
+  document.getElementById('executeBtn').addEventListener('click', executeSimulation);
+  document.getElementById('refreshBtn').addEventListener('click', loadOfficerList);
+});
 </script>
+
 </body>
 </html>
