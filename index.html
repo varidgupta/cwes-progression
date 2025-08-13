@@ -11,7 +11,7 @@
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
         th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
         th { background: #eee; }
-        input[type="number"], input[type="date"] { width: 100%; padding: 5px; }
+        input[type="number"], input[type="date"], select { width: 100%; padding: 5px; }
         button { padding: 10px 20px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #0056b3; }
     </style>
@@ -26,13 +26,14 @@
         <tr>
             <th>Rank</th>
             <th>Strength</th>
+            <th>Deputation Strength</th>
         </tr>
-        <tr><td>Apex</td><td><input type="number" value="1"></td></tr>
-        <tr><td>HAG</td><td><input type="number" value="6"></td></tr>
-        <tr><td>SAG</td><td><input type="number" value="46"></td></tr>
-        <tr><td>JAG</td><td><input type="number" value="164"></td></tr>
-        <tr><td>STS</td><td><input type="number" value="249"></td></tr>
-        <tr><td>JTS</td><td><input type="number" value="262"></td></tr>
+        <tr><td>Apex</td><td><input type="number" value="1"></td><td><input type="number" value="0"></td></tr>
+        <tr><td>HAG</td><td><input type="number" value="6"></td><td><input type="number" value="1"></td></tr>
+        <tr><td>SAG</td><td><input type="number" value="46"></td><td><input type="number" value="10"></td></tr>
+        <tr><td>JAG</td><td><input type="number" value="164"></td><td><input type="number" value="15"></td></tr>
+        <tr><td>STS</td><td><input type="number" value="249"></td><td><input type="number" value="10"></td></tr>
+        <tr><td>JTS</td><td><input type="number" value="262"></td><td><input type="number" value="2"></td></tr>
     </table>
 
     <!-- Promotion Criteria Table -->
@@ -42,18 +43,19 @@
             <th>Rank</th>
             <th>Criteria</th>
             <th>Value</th>
+            <th>Regular Service From</th>
         </tr>
-        <tr><td>Apex</td><td>Min Years at HAG</td><td><input type="number" step="0.1" value="2"></td></tr>
-        <tr><td>HAG</td><td>Min Years from JTS</td><td><input type="number" value="25"></td></tr>
-        <tr><td>HAG</td><td>Min Years at SAG</td><td><input type="number" value="1"></td></tr>
-        <tr><td>HAG</td><td>Or Min Years at SAG</td><td><input type="number" value="3"></td></tr>
-        <tr><td>SAG</td><td>Min Years from JTS</td><td><input type="number" value="17"></td></tr>
-        <tr><td>SAG</td><td>Min Years at JAG</td><td><input type="number" value="1"></td></tr>
-        <tr><td>SAG</td><td>Or Min Years at JAG</td><td><input type="number" value="3"></td></tr>
-        <tr><td>JAG</td><td>Min Years from JTS</td><td><input type="number" value="13"></td></tr>
-        <tr><td>JAG</td><td>Min Years at STS</td><td><input type="number" value="4"></td></tr>
-        <tr><td>JAG</td><td>Or Min Years at STS</td><td><input type="number" value="9"></td></tr>
-        <tr><td>STS</td><td>Min Years at JTS</td><td><input type="number" value="4"></td></tr>
+        <tr><td>Apex</td><td>Min Years at HAG</td><td><input type="number" step="0.1" value="2"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>HAG</td><td>Min Years from JTS</td><td><input type="number" value="25"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>HAG</td><td>Min Years at SAG</td><td><input type="number" value="1"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>HAG</td><td>Or Min Years at SAG</td><td><input type="number" value="3"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>SAG</td><td>Min Years from JTS</td><td><input type="number" value="17"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>SAG</td><td>Min Years at JAG</td><td><input type="number" value="1"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>SAG</td><td>Or Min Years at JAG</td><td><input type="number" value="3"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>JAG</td><td>Min Years from JTS</td><td><input type="number" value="13"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>JAG</td><td>Min Years at STS</td><td><input type="number" value="4"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>JAG</td><td>Or Min Years at STS</td><td><input type="number" value="9"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
+        <tr><td>STS</td><td>Min Years at JTS</td><td><input type="number" value="4"></td><td><select><option>Regular service from 1st Jan of following year</option><option>Regular service from 1st Jan of same year</option><option>Regular service from date of assuming the post</option></select></td></tr>
     </table>
 
     <!-- Simulation Start Date -->
@@ -72,13 +74,13 @@
 
 <script>
 function executeSimulation() {
-    // Gather inputs from the tables
     const sanctionedStrength = {};
     document.querySelectorAll('#sanctionedStrengthTable tr').forEach((row, i) => {
         if (i === 0) return;
         const rank = row.cells[0].innerText;
-        const value = parseInt(row.cells[1].querySelector('input').value);
-        sanctionedStrength[rank] = value;
+        const strength = parseInt(row.cells[1].querySelector('input').value);
+        const deputation = parseInt(row.cells[2].querySelector('input').value);
+        sanctionedStrength[rank] = { strength, deputation };
     });
 
     const promotionCriteria = {};
@@ -87,17 +89,15 @@ function executeSimulation() {
         const rank = row.cells[0].innerText;
         const criteriaName = row.cells[1].innerText;
         const value = parseFloat(row.cells[2].querySelector('input').value);
-        if (!promotionCriteria[rank]) promotionCriteria[rank] = {};
-        promotionCriteria[rank][criteriaName.replace(/ /g, '_').toLowerCase()] = value;
+        const serviceFrom = row.cells[3].querySelector('select').value;
+        if (!promotionCriteria[rank]) promotionCriteria[rank] = [];
+        promotionCriteria[rank].push({ criteria: criteriaName, value, serviceFrom });
     });
 
     const startDate = document.getElementById('startDate').value;
 
-    // Example output (replace with actual simulation logic or API call)
     document.getElementById('result').innerHTML =
-        `<pre>Sanctioned Strength: ${JSON.stringify(sanctionedStrength, null, 2)}
-Promotion Criteria: ${JSON.stringify(promotionCriteria, null, 2)}
-Start Date: ${startDate}</pre>`;
+        `<pre>Sanctioned Strength: ${JSON.stringify(sanctionedStrength, null, 2)}\nPromotion Criteria: ${JSON.stringify(promotionCriteria, null, 2)}\nStart Date: ${startDate}</pre>`;
 }
 </script>
 </body>
