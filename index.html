@@ -309,14 +309,13 @@ function eligible(off, targetRank, now, crit) {
   return false;
 }
 
-// ---------- Simulation ----------
 function executeSimulation() {
   if (!OFFICERS.length) {
     document.getElementById('result').innerHTML = `<pre>No officers loaded.</pre>`;
     return;
   }
 
-  const capacity = readSanctionedStrength(); // capacity = sanctioned + deputation
+  const capacity = readSanctionedStrength();
   const criteria = readPromotionCriteria();
   const startDate = parseDate(document.getElementById('startDate').value);
   const lastRet = OFFICERS.reduce((mx, o) => {
@@ -324,7 +323,7 @@ function executeSimulation() {
     return (!mx || (r && r > mx)) ? r : mx;
   }, null) || startDate;
 
-  // Compute incumbents per rank and vacancies = capacity - incumbents
+  // Compute vacancies initially
   const ranksAll = ["JTS","STS","JAG","SAG","HAG","Apex"];
   const incumbents = Object.fromEntries(ranksAll.map(r => [r, 0]));
   OFFICERS.forEach(o => {
@@ -335,52 +334,44 @@ function executeSimulation() {
     r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))
   ]));
 
-  // Deep copy officers for mutation during simulation
+  // Deep copy officers
   const officers = OFFICERS.map(o => ({ ...o }));
 
-  // Helper to set promotion and cascade vacancy (one level per cycle)
+  // Promotion helper
   function promote(off, targetRank, when) {
     const feeder = FEEDER[targetRank];
     if (!feeder) return;
-
-    // set promotion date field on the record
     const keyMap = { STS:'P_STS', JAG:'P_JAG', SAG:'P_SAG', HAG:'P_HAG', Apex:'P_Apex' };
     off[keyMap[targetRank]] = when.toISOString();
-
-    // update rank & vacancies
     off.CurrentRank = targetRank;
     vacancies[targetRank] = Math.max(0, (vacancies[targetRank] ?? 0) - 1);
     vacancies[feeder] = (vacancies[feeder] ?? 0) + 1;
   }
 
-  // Simulate month-by-month using calendar months
+  // Run simulation month-by-month
   let now = new Date(startDate);
   while (now <= lastRet) {
     const windowEnd = addMonths(now, 1);
 
-    // retirements within [now, windowEnd)
+    // Retirements
     officers.forEach(off => {
       const ret = parseDate(off.Retirement);
       if (ret && ret >= now && ret < windowEnd) {
         const r = (off.CurrentRank || '').trim();
         if (vacancies[r] !== undefined) vacancies[r] += 1;
-        off._retired = true; // mark so they won't be promoted later
+        off._retired = true;
       }
     });
 
-    // promotions top-down, one level per cycle, apply a seniority rule (DOJ asc)
+    // Promotions top-down
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
       if ((vacancies[targetRank] ?? 0) <= 0) return;
-
       const feeder = FEEDER[targetRank];
       const candidates = officers
         .filter(off => !off._retired)
         .filter(off => (off.CurrentRank || '').toUpperCase() === feeder.toUpperCase())
         .filter(off => eligible(off, targetRank, now, criteria))
-        .sort((a, b) => {
-          const da = parseDate(a.DOJ), db = parseDate(b.DOJ);
-          return (da?.getTime() || 0) - (db?.getTime() || 0);
-        });
+        .sort((a, b) => (parseDate(a.DOJ) - parseDate(b.DOJ)));
 
       let slots = vacancies[targetRank];
       for (let i = 0; i < candidates.length && slots > 0; i++) {
@@ -392,7 +383,19 @@ function executeSimulation() {
     now = windowEnd;
   }
 
-  // -------- Build JSON result + display + download link --------
+  // Store original promotion dates for forecast highlighting
+  const originalDates = {};
+  OFFICERS.forEach(o => {
+    originalDates[o.ID] = {
+      P_STS: o.P_STS ?? o['Promotion_Date_to_STS'] ?? null,
+      P_JAG: o.P_JAG ?? o['Promotion_Date_to_JAG'] ?? null,
+      P_SAG: o.P_SAG ?? o['Promotion_Date_to_SAG'] ?? null,
+      P_HAG: o.P_HAG ?? o['Promotion_Date_to_HAG'] ?? null,
+      P_Apex: o.P_Apex ?? o['Promotion_Date_to_Apex'] ?? null
+    };
+  });
+
+  // Build result object
   const result = {
     startedOn: startDate.toISOString(),
     capacityPerRank: capacity,
@@ -411,21 +414,135 @@ function executeSimulation() {
     }))
   };
 
-  // Pretty print in the JSON pane
-  const pretty = JSON.stringify(result, null, 2);
-  document.getElementById('jsonResultPane').textContent = pretty;
+  // Save globally for date filter
+  window.resultData = result;
+  window.originalDatesMap = originalDates;
 
-  // Also show a quick human summary
+  // Show summary
   document.getElementById('result').innerHTML =
     `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}
 Final Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
 
-  // Create a downloadable JSON blob
-  const blob = new Blob([pretty], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.getElementById('downloadJsonLink');
-  a.href = url;
-  a.style.display = 'inline-block';
+  // Add date filter + table container
+  const resultsPane = document.getElementById('jsonResultPane');
+  resultsPane.innerHTML = `
+    <div style="margin-bottom:10px;">
+      <label><b>Filter by Date:</b> 
+        <input type="date" id="resultsDateFilter" value="${startDate.toISOString().split('T')[0]}">
+      </label>
+    </div>
+    <div id="resultsTableWrapper" class="scroll-pane"></div>
+  `;
+
+  document.getElementById('resultsDateFilter').addEventListener('change', (e) => {
+    recalcRanksAndDisplay(e.target.value);
+  });
+
+  // Initial display
+  recalcRanksAndDisplay(startDate.toISOString().split('T')[0]);
+}
+
+function recalcRanksAndDisplay(selectedDate) {
+  const filterDate = parseDate(selectedDate);
+  const result = window.resultData;
+  const originalDates = window.originalDatesMap;
+
+  // Keep simulation order, filter out retirees
+  let filtered = result.officers.filter(o => {
+    const ret = parseDate(o.RetirementDate);
+    return !ret || ret >= filterDate;
+  });
+
+  // Assign ranks in list order based on capacity
+  const caps = {
+    Apex: result.capacityPerRank["Apex"] || 0,
+    HAG: result.capacityPerRank["HAG"] || 0,
+    SAG: result.capacityPerRank["SAG"] || 0,
+    JAG: result.capacityPerRank["JAG"] || 0,
+    STS: result.capacityPerRank["STS"] || 0
+  };
+
+  let counters = { Apex: 0, HAG: 0, SAG: 0, JAG: 0, STS: 0 };
+  filtered.forEach(o => {
+    if (counters.Apex < caps.Apex) {
+      o.CurrentRank = "Apex"; counters.Apex++;
+    } else if (counters.HAG < caps.HAG) {
+      o.CurrentRank = "HAG"; counters.HAG++;
+    } else if (counters.SAG < caps.SAG) {
+      o.CurrentRank = "SAG"; counters.SAG++;
+    } else if (counters.JAG < caps.JAG) {
+      o.CurrentRank = "JAG"; counters.JAG++;
+    } else if (counters.STS < caps.STS) {
+      o.CurrentRank = "STS"; counters.STS++;
+    } else {
+      o.CurrentRank = "JTS";
+    }
+  });
+
+  // Serial numbers in rank block order but preserving officer order
+  let serialMap = {};
+  let serialCounter = 1;
+  function assignSerialsForRank(rank) {
+    filtered.forEach(o => {
+      if (o.CurrentRank === rank && serialMap[o.ID] == null) {
+        serialMap[o.ID] = serialCounter++;
+      }
+    });
+  }
+  assignSerialsForRank("Apex");
+  assignSerialsForRank("HAG");
+  assignSerialsForRank("SAG");
+  assignSerialsForRank("JAG");
+  assignSerialsForRank("STS");
+  assignSerialsForRank("JTS");
+
+  // Build results table
+  const wrapper = document.getElementById('resultsTableWrapper');
+  wrapper.innerHTML = '';
+  const table = document.createElement('table');
+  table.style.width = '100%';
+  table.style.borderCollapse = 'collapse';
+
+  const cols = ["Serial", ...Object.keys(filtered[0] || {})];
+  const thead = document.createElement('thead');
+  thead.innerHTML = '<tr>' + cols.map(k => `<th>${k}</th>`).join('') + '</tr>';
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  filtered.forEach(row => {
+    const tr = document.createElement('tr');
+    cols.forEach(key => {
+      const td = document.createElement('td');
+      if (key === "Serial") {
+        td.textContent = serialMap[row.ID] || '';
+      } else {
+        const val = row[key];
+        const isDateField = String(key).toLowerCase().includes('date');
+
+        // Highlight forecasted promotion dates
+        if (key.startsWith('Promotion_Date_to_')) {
+          const mapKey = {
+            Promotion_Date_to_STS: 'P_STS',
+            Promotion_Date_to_JAG: 'P_JAG',
+            Promotion_Date_to_SAG: 'P_SAG',
+            Promotion_Date_to_HAG: 'P_HAG',
+            Promotion_Date_to_Apex: 'P_Apex'
+          }[key];
+          const originallyBlank = !originalDates[row.ID][mapKey];
+          if (originallyBlank && val) {
+            td.style.color = 'blue';
+            td.style.fontWeight = 'bold';
+          }
+        }
+
+        td.textContent = isDateField ? formatDateDDMMYYYY(val) : (val ?? '');
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrapper.appendChild(table);
 }
 
 // ---------- Init ----------
