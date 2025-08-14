@@ -10,12 +10,14 @@
         h1 { text-align: center; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
         th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background: #eee; }
-        input[type="number"], input[type="date"], select { width: 100%; padding: 5px; }
+        th { background: #eee; position: sticky; top: 0; }
+        input[type="number"], input[type="date"], select { width: 100%; padding: 5px; box-sizing: border-box; }
         button { padding: 10px 20px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
         button:hover { background: #0056b3; }
         .scroll-pane { max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; }
         pre { background: #f0f0f0; padding: 10px; border-radius: 4px; }
+        .controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .controls-row label { font-weight: 600; }
     </style>
 </head>
 <body>
@@ -56,7 +58,6 @@
             <th>Value</th>
             <th>Regular Service From</th>
         </tr>
-        <!-- Table rows remain unchanged -->
     </table>
 
     <h2>Simulation Start Date</h2>
@@ -69,10 +70,17 @@
     <h2>Results</h2>
     <div id="result"></div>
 
-    <h3>Results (JSON)</h3>
-    <div class="scroll-pane">
-    <pre id="jsonResultPane"></pre>
+    <!-- Filter controls are OUTSIDE the scroll pane -->
+    <div id="resultsFilter" class="controls-row" style="margin: 10px 0;">
+        <label for="filterDate">Show serving as on:</label>
+        <input type="date" id="filterDate">
+        <button id="applyFilterBtn">Apply</button>
     </div>
+
+    <!-- SINGLE scroll pane for results table -->
+    <div id="resultsPane" class="scroll-pane"></div>
+
+    <!-- Optional: JSON download link kept (hidden until used) -->
     <a id="downloadJsonLink" href="#" download="simulation_results.json" style="display:none;">Download JSON</a>
 
 </div>
@@ -124,7 +132,8 @@ function loadOfficerList() {
           if (!ret) return true;
           return parseDate(ret) >= today;
         })
-        .map(o => ({
+        .map((o, i) => ({
+          originalIndex: i,
           // keep originals but ensure some canonical keys
           ...o,
           ID: o.ID ?? o.Id ?? o.id,
@@ -190,9 +199,6 @@ const DEFAULT_CRITERIA = {
 
 function buildPromotionCriteriaTable() {
   const table = document.getElementById('promotionCriteriaTable');
-  // header row already exists
-  // add rows dynamically for each target rank
-  RANKS.concat("STS").forEach(rank => { /* ensure STS included once */ });
   const existingRows = table.querySelectorAll('tr').length;
   if (existingRows > 1) return; // already built
 
@@ -335,7 +341,8 @@ function executeSimulation() {
   ]));
 
   // Deep copy officers
-  const officers = OFFICERS.map(o => ({ ...o }));
+  const officers = OFFICERS.map((o, i) => ({
+          originalIndex: i, ...o }));
 
   // Promotion helper
   function promote(off, targetRank, when) {
@@ -371,7 +378,7 @@ function executeSimulation() {
         .filter(off => !off._retired)
         .filter(off => (off.CurrentRank || '').toUpperCase() === feeder.toUpperCase())
         .filter(off => eligible(off, targetRank, now, criteria))
-        .sort((a, b) => (parseDate(a.DOJ) - parseDate(b.DOJ)));
+        .sort((a, b) => a.originalIndex - b.originalIndex);
 
       let slots = vacancies[targetRank];
       for (let i = 0; i < candidates.length && slots > 0; i++) {
@@ -400,7 +407,8 @@ function executeSimulation() {
     startedOn: startDate.toISOString(),
     capacityPerRank: capacity,
     finalVacancies: vacancies,
-    officers: officers.map(o => ({
+    officers: officers.map((o, i) => ({
+          originalIndex: i,
       ID: o.ID,
       Name: o.Name ?? o['Name'],
       CurrentRank: o.CurrentRank,
@@ -423,23 +431,14 @@ function executeSimulation() {
     `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}
 Final Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
 
-  // Add date filter + table container
-  const resultsPane = document.getElementById('jsonResultPane');
-  resultsPane.innerHTML = `
-    <div style="margin-bottom:10px;">
-      <label><b>Filter by Date:</b> 
-        <input type="date" id="resultsDateFilter" value="${startDate.toISOString().split('T')[0]}">
-      </label>
-    </div>
-    <div id="resultsTableWrapper" class="scroll-pane"></div>
-  `;
+  // Default the filter date (outside scroll pane) to the simulation start date
+  const filterInput = document.getElementById('filterDate');
+  if (!filterInput.value) {
+    filterInput.value = startDate.toISOString().split('T')[0];
+  }
 
-  document.getElementById('resultsDateFilter').addEventListener('change', (e) => {
-    recalcRanksAndDisplay(e.target.value);
-  });
-
-  // Initial display
-  recalcRanksAndDisplay(startDate.toISOString().split('T')[0]);
+  // Render once using the current filter date
+  recalcRanksAndDisplay(filterInput.value);
 }
 
 function recalcRanksAndDisplay(selectedDate) {
@@ -447,7 +446,9 @@ function recalcRanksAndDisplay(selectedDate) {
   const result = window.resultData;
   const originalDates = window.originalDatesMap;
 
-  // Keep simulation order, filter out retirees
+  if (!result) return;
+
+  // Keep simulation order, filter out retirees (show only serving as on the filter date)
   let filtered = result.officers.filter(o => {
     const ret = parseDate(o.RetirementDate);
     return !ret || ret >= filterDate;
@@ -489,16 +490,12 @@ function recalcRanksAndDisplay(selectedDate) {
       }
     });
   }
-  assignSerialsForRank("Apex");
-  assignSerialsForRank("HAG");
-  assignSerialsForRank("SAG");
-  assignSerialsForRank("JAG");
-  assignSerialsForRank("STS");
-  assignSerialsForRank("JTS");
+  ["Apex","HAG","SAG","JAG","STS","JTS"].forEach(assignSerialsForRank);
 
-  // Build results table
-  const wrapper = document.getElementById('resultsTableWrapper');
-  wrapper.innerHTML = '';
+  // Build results table inside the SINGLE scroll pane
+  const resultsPane = document.getElementById('resultsPane');
+  resultsPane.innerHTML = ''; // clear
+
   const table = document.createElement('table');
   table.style.width = '100%';
   table.style.borderCollapse = 'collapse';
@@ -528,7 +525,7 @@ function recalcRanksAndDisplay(selectedDate) {
             Promotion_Date_to_HAG: 'P_HAG',
             Promotion_Date_to_Apex: 'P_Apex'
           }[key];
-          const originallyBlank = !originalDates[row.ID][mapKey];
+          const originallyBlank = originalDates[row.ID] && !originalDates[row.ID][mapKey];
           if (originallyBlank && val) {
             td.style.color = 'blue';
             td.style.fontWeight = 'bold';
@@ -542,7 +539,7 @@ function recalcRanksAndDisplay(selectedDate) {
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
-  wrapper.appendChild(table);
+  resultsPane.appendChild(table);
 }
 
 // ---------- Init ----------
@@ -551,6 +548,15 @@ document.addEventListener('DOMContentLoaded', () => {
   buildPromotionCriteriaTable();
   document.getElementById('executeBtn').addEventListener('click', executeSimulation);
   document.getElementById('refreshBtn').addEventListener('click', loadOfficerList);
+
+  // Hook up filter controls (outside scroll pane)
+  document.getElementById('applyFilterBtn').addEventListener('click', () => {
+    const v = document.getElementById('filterDate').value;
+    recalcRanksAndDisplay(v);
+  });
+  document.getElementById('filterDate').addEventListener('change', (e) => {
+    recalcRanksAndDisplay(e.target.value);
+  });
 });
 </script>
 
