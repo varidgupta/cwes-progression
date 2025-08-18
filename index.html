@@ -30,6 +30,12 @@
     @media (max-width: 980px) {
       .analytics { grid-template-columns: 1fr; }
     }
+    /* Prevent Chart.js resize feedback by fixing the chart area height */
+    .card #monthlyChart {
+      height: 260px !important; /* pick your height */
+      max-height: 260px !important;
+    }
+
   </style>
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -346,45 +352,63 @@ function executeSimulation() {
     return;
   }
 
-  monthlyStats = {}; // reset
+  // 0) Hard reset run-scoped state
+  monthlyStats = {};                 // fresh analytics per run
+  window.monthlyStats = monthlyStats;
+  window.resultData = null;
+  window.originalDatesMap = null;
 
   const capacity = readSanctionedStrength();
   const criteria = readPromotionCriteria();
   const startDate = parseDate(document.getElementById('startDate').value);
-  const lastRet = OFFICERS.reduce((mx, o) => {
+
+  // 1) Deep-copy officers so we never mutate OFFICERS across runs
+  const officers = OFFICERS.map((o, i) => ({
+    originalIndex: i,
+    ...JSON.parse(JSON.stringify(o))  // cheap deep copy of each row
+  }));
+
+  // 2) Last retirement bound
+  const lastRet = officers.reduce((mx, o) => {
     const r = parseDate(o.Retirement);
     return (!mx || (r && r > mx)) ? r : mx;
   }, null) || startDate;
 
+  // 3) Vacancies at start (capacity minus incumbents)
   const ranksAll = ["JTS","STS","JAG","SAG","HAG","Apex"];
   const incumbents = Object.fromEntries(ranksAll.map(r => [r, 0]));
-  OFFICERS.forEach(o => { const rk = (o.CurrentRank || o['Current Rank'] || '').trim(); if (incumbents[rk] !== undefined) incumbents[rk]++; });
-  const vacancies = Object.fromEntries(ranksAll.map(r => [r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))]));
-
-  const officers = OFFICERS.map((o, i) => ({ originalIndex: i, ...o }));
+  officers.forEach(o => {
+    const rk = (o.CurrentRank || o['Current Rank'] || '').trim();
+    if (incumbents[rk] !== undefined) incumbents[rk]++;
+  });
+  const vacancies = Object.fromEntries(
+    ranksAll.map(r => [r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))])
+  );
 
   function promote(off, targetRank, when, mKey) {
     const feeder = FEEDER[targetRank]; if (!feeder) return;
     const keyMap = { STS:'P_STS', JAG:'P_JAG', SAG:'P_SAG', HAG:'P_HAG', Apex:'P_Apex' };
     off[keyMap[targetRank]] = when.toISOString();
     off.CurrentRank = targetRank;
+
+    // consume a vacancy in target, create one in feeder
     vacancies[targetRank] = Math.max(0, (vacancies[targetRank] ?? 0) - 1);
-    // creating vacancy in feeder due to promotion
     vacancies[feeder] = (vacancies[feeder] ?? 0) + 1;
+
     ensureMonthLevel(mKey, feeder);
     monthlyStats[mKey][feeder].vacanciesCreated += 1;
-    // record promotion made into targetRank
+
     ensureMonthLevel(mKey, targetRank);
     monthlyStats[mKey][targetRank].promotionsMade += 1;
   }
 
-  // Run simulation month-by-month
+  // 4) Month-by-month loop
   let now = new Date(startDate);
   while (now <= lastRet) {
     const windowEnd = addMonths(now, 1);
     const mKey = monthKey(now);
 
-    // 1) Eligible lists for each target rank at the start of the month
+    // Eligible lists at month start (for all target ranks)
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
       const feeder = FEEDER[targetRank];
       const candidates = officers
@@ -392,12 +416,12 @@ function executeSimulation() {
         .filter(off => (off.CurrentRank || '').toUpperCase() === feeder.toUpperCase())
         .filter(off => eligible(off, targetRank, now, criteria))
         .sort((a,b) => a.originalIndex - b.originalIndex);
-
       ensureMonthLevel(mKey, targetRank);
-      monthlyStats[mKey][targetRank].eligible = candidates.map(c => ({ ID: c.ID, Name: c.Name ?? c['Name'] ?? c.ID }));
+      monthlyStats[mKey][targetRank].eligible =
+        candidates.map(c => ({ ID: c.ID, Name: c.Name ?? c['Name'] ?? c.ID }));
     });
 
-    // 2) Retirements in the month → vacancy created at that rank
+    // Retirements in the window → vacancies
     officers.forEach(off => {
       const ret = parseDate(off.Retirement);
       if (ret && ret >= now && ret < windowEnd) {
@@ -409,7 +433,7 @@ function executeSimulation() {
       }
     });
 
-    // 3) Promotions top-down in the month
+    // Promotions top-down
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
       if ((vacancies[targetRank] ?? 0) <= 0) return;
       const feeder = FEEDER[targetRank];
@@ -429,7 +453,7 @@ function executeSimulation() {
     now = windowEnd;
   }
 
-  // Store original promotion dates for forecast highlighting
+  // 5) Preserve originals (for blue highlight)
   const originalDates = {};
   OFFICERS.forEach(o => {
     originalDates[o.ID] = {
@@ -441,6 +465,7 @@ function executeSimulation() {
     };
   });
 
+  // 6) Build result bundle (from mutated copies)
   const result = {
     startedOn: startDate.toISOString(),
     capacityPerRank: capacity,
@@ -467,11 +492,12 @@ function executeSimulation() {
   document.getElementById('result').innerHTML =
     `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}\nFinal Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
 
+  // Default filter date
   const filterInput = document.getElementById('filterDate');
   if (!filterInput.value) filterInput.value = startDate.toISOString().split('T')[0];
   recalcRanksAndDisplay(filterInput.value);
 
-  // Initialize the analytics (default level from dropdown)
+  // Force rebuild the analytics chart immediately for the current dropdown level
   const level = document.getElementById('levelSelect').value;
   renderAnalytics(level);
 }
@@ -539,14 +565,24 @@ function recalcRanksAndDisplay(selectedDate) {
 let chartRef = null;
 
 function renderAnalytics(level) {
-  const stats = window.monthlyStats || {}; const months = Object.keys(stats).sort();
+  const stats = window.monthlyStats || {};
+  const months = Object.keys(stats).sort();
   const labels = months;
+
   const vacancies = months.map(m => (stats[m][level]?.vacanciesCreated) || 0);
   const promotions = months.map(m => (stats[m][level]?.promotionsMade) || 0);
   const eligibleCount = months.map(m => (stats[m][level]?.eligible?.length) || 0);
 
+  // Compute a sane dynamic cap for Y so bars don't "go infinite"
+  const maxVal = Math.max(0, ...vacancies, ...promotions, ...eligibleCount);
+  const yCap = (Number.isFinite(maxVal) ? maxVal : 0) + 2; // add a little headroom
+
   const ctx = document.getElementById('monthlyChart');
-  if (chartRef) { chartRef.destroy(); }
+  if (chartRef) {
+    chartRef.destroy(); // ensure a clean rebuild every time
+    chartRef = null;
+  }
+
   chartRef = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -564,7 +600,6 @@ function renderAnalytics(level) {
         tooltip: {
           callbacks: {
             afterLabel: function(context) {
-              // Show up to 5 names in tooltip for eligible series
               if (context.dataset.label !== 'Eligible Officers') return '';
               const m = labels[context.dataIndex];
               const list = (stats[m][level]?.eligible || []).map(o => o.Name || o.ID);
@@ -575,11 +610,18 @@ function renderAnalytics(level) {
           }
         }
       },
-      scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+      scales: {
+        x: { stacked: false },
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          suggestedMax: yCap
+        }
+      }
     }
   });
 
-  // Build Eligible Officers by Month list (full names)
+  // Rebuild "Eligible Officers by Month" list (right card)
   const el = document.getElementById('eligibleList');
   el.innerHTML = '';
   months.forEach(m => {
