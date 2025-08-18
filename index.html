@@ -464,7 +464,10 @@ function executeSimulation() {
 
       let slots = vacancies[targetRank];
       for (let i = 0; i < candidates.length && slots > 0; i++) {
-        promote(candidates[i], targetRank, addDays(now, 1), mKey);
+        const PROMOTION_DAY_OFFSET = 0; // 0 = 1st day, 1 = 2nd day, etc.
+        const promotionDate = addDays(now, PROMOTION_DAY_OFFSET);
+        promote(candidates[i], targetRank, promotionDate, mKey);
+
         slots--;
       }
     });
