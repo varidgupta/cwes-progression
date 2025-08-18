@@ -122,7 +122,7 @@
       <option>HAG</option>
       <option>Apex</option>
     </select>
-<label for="granularity" style="margin-left:12px;">Frequency:</label>
+<label for="granularity" style="margin-left:12px;">Granularity:</label>
 <select id="granularity">
   <option value="monthly">Monthly</option>
   <option value="yearly" selected>Yearly</option>
@@ -132,7 +132,7 @@
 
   <div class="analytics">
     <div class="card">
-      <h3>Bar Graph</h3>
+      <h3>Bar Graph (per month)</h3>
       <canvas id="monthlyChart"></canvas>
     </div>
     <div class="card">
@@ -381,7 +381,7 @@ let monthlyStats = {}; // { 'YYYY-MM': { Level: { eligible:[{ID,Name}], vacancie
 
 function ensureMonthLevel(mKey, level) {
   if (!monthlyStats[mKey]) monthlyStats[mKey] = {};
-  if (!monthlyStats[mKey][level]) monthlyStats[mKey][level] = { eligible: [], vacanciesCreated: 0, promotionsMade: 0 };
+  if (!monthlyStats[mKey][level]) monthlyStats[mKey][level] = { eligible: [], vacanciesCreated: 0, promotionsMade: 0, strength: 0 };
 }
 
 function executeSimulation() {
@@ -478,6 +478,20 @@ function executeSimulation() {
       }
     });
 
+
+// 4) Snapshot strength at the end of the month
+    (function snapshotStrength(){
+      const counters = { Apex:0, HAG:0, SAG:0, JAG:0, STS:0, JTS:0 };
+      officers.forEach(off => {
+        if (off._retired) return;
+        const r = (off.CurrentRank || '').trim();
+        if (counters.hasOwnProperty(r)) counters[r]++;
+      });
+      Object.keys(counters).forEach(r => {
+        ensureMonthLevel(mKey, r);
+        monthlyStats[mKey][r].strength = counters[r];
+      });
+    })();
     now = windowEnd;
   }
 
@@ -733,152 +747,208 @@ function renderAnalytics(level) {
 });
 </script>
 
-<script>
 // ===== Injected by ChatGPT: Monthly ⇄ Yearly toggle support =====
+<script>
 (function() {
   function getGranularity() {
     const sel = document.getElementById('granularity');
     return sel ? sel.value : 'yearly';
   }
-  // Keep one global chart instance (shadow existing if any)
+
+  // Keep one global Chart.js instance
   window.chartRef = window.chartRef || null;
 
-  // New unified renderer; overrides previous renderAnalytics if defined earlier
+  // Override renderAnalytics to support monthly/yearly + strength
   window.renderAnalytics = function(level, mode) {
-    try {
-      const stats = window.monthlyStats || {};
-      const monthKeys = Object.keys(stats).sort(); // 'YYYY-MM'
-      const currentMode = mode || getGranularity();
+    const stats = window.monthlyStats || {};
+    const monthKeys = Object.keys(stats).sort(); // 'YYYY-MM'
+    const currentMode = mode || getGranularity();
 
-      // ---- Aggregators ----
-      const byMonth = () => {
-        const labels = monthKeys;
-        const vacancies = [];
-        const promotions = [];
-        const eligibleAvg = [];
-        const eligibleNamesByLabel = new Map();
+    // ---- Aggregators ----
+    function aggregateMonthly() {
+      const labels = monthKeys.slice();
+      const vacancies = [];
+      const promotions = [];
+      const eligibleAvg = [];
+      const strength = [];
+      const eligibleNamesByLabel = new Map();
 
-        monthKeys.forEach(m => {
-          const s = stats[m]?.[level];
-          const vac = s?.vacanciesCreated || 0;
-          const pro = s?.promotionsMade || 0;
-          const names = (s?.eligible || []).map(o => o.Name || o.ID);
-          vacancies.push(vac);
-          promotions.push(pro);
-          eligibleAvg.push(names.length);
-          eligibleNamesByLabel.set(m, new Set(names));
-        });
-
-        return { labels, vacancies, promotions, eligibleAvg, eligibleNamesByLabel, xTitle: 'Month', vacTitle: 'Vacancies / Promotions (totals)', eligTitle: 'Eligible (count)' };
-      };
-
-      const byYear = () => {
-        const yearKeys = [...new Set(monthKeys.map(m => m.slice(0,4)))].sort();
-        const agg = {};
-        yearKeys.forEach(y => (agg[y] = { vac:0, pro:0, eligCounts:[], eligNames:new Set() }));
-
-        monthKeys.forEach(m => {
-          const y = m.slice(0,4);
-          const s = stats[m]?.[level];
-          if (!s) return;
-          agg[y].vac += s.vacanciesCreated || 0;
-          agg[y].pro += s.promotionsMade || 0;
-          const names = (s.eligible || []).map(o => o.Name || o.ID);
-          agg[y].eligCounts.push(names.length);
-          names.forEach(n => agg[y].eligNames.add(n));
-        });
-
-        const labels = yearKeys;
-        const vacancies = yearKeys.map(y => agg[y].vac);
-        const promotions = yearKeys.map(y => agg[y].pro);
-        const eligibleAvg = yearKeys.map(y => {
-          const arr = agg[y].eligCounts;
-          return arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
-        });
-
-        const eligibleNamesByLabel = new Map(yearKeys.map(y => [y, agg[y].eligNames]));
-        return { labels, vacancies, promotions, eligibleAvg, eligibleNamesByLabel, xTitle: 'Year', vacTitle: 'Vacancies / Promotions (totals)', eligTitle: 'Eligible (yearly avg)' };
-      };
-
-      const data = (currentMode === 'monthly') ? byMonth() : byYear();
-
-      // ---- Chart ----
-      const canvas = document.getElementById('monthlyChart');
-      if (!canvas || typeof Chart === 'undefined') return;
-
-      if (window.chartRef) { try { window.chartRef.destroy(); } catch(e) {} window.chartRef = null; }
-
-      const leftMax  = Math.max(0, ...data.vacancies, ...data.promotions);
-      const rightMax = Math.max(0, ...data.eligibleAvg);
-
-      window.chartRef = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels: data.labels,
-          datasets: [
-            { label: 'Vacancies Created', data: data.vacancies, borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.72, barPercentage: 0.9, yAxisID: 'yBars' },
-            { label: 'Promotions Made',  data: data.promotions, borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.72, barPercentage: 0.9, yAxisID: 'yBars' },
-            { type: 'line', label: (currentMode === 'monthly') ? 'Eligible (count)' : 'Eligible (yearly avg)', data: data.eligibleAvg, yAxisID: 'yLine', tension: 0.35, pointRadius: 3, pointHoverRadius: 5, fill: false }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 14 } },
-            tooltip: {
-              backgroundColor: 'rgba(0,0,0,0.85)',
-              padding: 10,
-              displayColors: true,
-              callbacks: {
-                title: items => `${(currentMode === 'monthly') ? 'Month' : 'Year'} ${items[0].label}`,
-                footer: items => {
-                  const vac = items.find(i => i.dataset.label.includes('Vacancies'))?.raw ?? 0;
-                  const pro = items.find(i => i.dataset.label.includes('Promotions'))?.raw ?? 0;
-                  return `Net vacancies: ${vac - pro}`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 16 }, title: { display: true, text: data.xTitle } },
-            yBars: {
-              beginAtZero: true,
-              suggestedMax: (Number.isFinite(leftMax) ? leftMax : 0) + 2,
-              grid: { color: 'rgba(0,0,0,0.06)' },
-              ticks: { precision: 0 },
-              title: { display: true, text: data.vacTitle }
-            },
-            yLine: {
-              position: 'right',
-              beginAtZero: true,
-              suggestedMax: (Number.isFinite(rightMax) ? rightMax : 0) + 2,
-              grid: { drawOnChartArea: false },
-              ticks: { precision: 0 },
-              title: { display: true, text: data.eligTitle }
-            }
-          }
-        }
+      labels.forEach(m => {
+        const s = stats[m]?.[level] || {};
+        const vac = s.vacanciesCreated || 0;
+        const pro = s.promotionsMade || 0;
+        const names = (s.eligible || []).map(o => o.Name || o.ID);
+        const str = s.strength || 0;
+        vacancies.push(vac);
+        promotions.push(pro);
+        eligibleAvg.push(names.length);
+        strength.push(str);
+        eligibleNamesByLabel.set(m, new Set(names));
       });
 
-      // ---- Right-hand eligible list ----
-      const el = document.getElementById('eligibleList');
-      if (el) {
-        el.innerHTML = '';
-        data.labels.forEach(lbl => {
-          const namesSet = data.eligibleNamesByLabel.get(lbl) || new Set();
-          const names = Array.from(namesSet);
-          const shown = names.slice(0, 20);
-          const more  = names.length > 20 ? ` (+${names.length - 20} more)` : '';
-          const row = document.createElement('div');
-          row.className = 'month-row';
-          row.innerHTML = `<strong>${lbl}</strong> <span class="tag">${(currentMode === 'monthly') ? names.length + ' eligible' : names.length + ' unique eligible'}</span><div style="font-size:13px;margin-top:4px;">${shown.length ? shown.join(', ') + more : '<em>None</em>'}</div>`;
-          el.appendChild(row);
-        });
+      return {
+        labels, vacancies, promotions, eligibleAvg, strength, eligibleNamesByLabel,
+        xTitle: 'Month',
+        vacTitle: 'Vacancies / Promotions (totals)',
+        eligTitle: 'Eligible (count)',
+        strengthTitle: 'Strength (end of period)'
+      };
+    }
+
+    function aggregateYearly() {
+      const years = Array.from(new Set(monthKeys.map(m => m.slice(0,4)))).sort();
+      const agg = Object.fromEntries(years.map(y => [y, { vac:0, pro:0, eligCounts:[], eligNames:new Set(), lastMonth:null }]));
+
+      monthKeys.forEach(m => {
+        const y = m.slice(0,4);
+        const s = stats[m]?.[level];
+        if (!s) return;
+        const a = agg[y];
+        a.vac += s.vacanciesCreated || 0;
+        a.pro += s.promotionsMade || 0;
+        const names = (s.eligible || []).map(o => o.Name || o.ID);
+        a.eligCounts.push(names.length);
+        names.forEach(n => a.eligNames.add(n));
+        a.lastMonth = m; // by sort order, this will end up the last month in that year
+      });
+
+      const labels = years;
+      const vacancies = years.map(y => agg[y].vac);
+      const promotions = years.map(y => agg[y].pro);
+      const eligibleAvg = years.map(y => {
+        const arr = agg[y].eligCounts;
+        return arr.length ? Math.round(arr.reduce((a,b)=>a+b,0) / arr.length) : 0;
+      });
+      const strength = years.map(y => {
+        const last = agg[y].lastMonth;
+        return last ? (stats[last]?.[level]?.strength || 0) : 0;
+      });
+      const eligibleNamesByLabel = new Map(years.map(y => [y, agg[y].eligNames]));
+
+      return {
+        labels, vacancies, promotions, eligibleAvg, strength, eligibleNamesByLabel,
+        xTitle: 'Year',
+        vacTitle: 'Vacancies / Promotions (totals)',
+        eligTitle: 'Eligible (yearly avg)',
+        strengthTitle: 'Strength (end of period)'
+      };
+    }
+
+    const data = (currentMode === 'monthly') ? aggregateMonthly() : aggregateYearly();
+
+    // ---- Chart ----
+    const canvas = document.getElementById('monthlyChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    // Destroy previous chart if any
+    if (window.chartRef && typeof window.chartRef.destroy === 'function') {
+      try { window.chartRef.destroy(); } catch (e) {}
+      window.chartRef = null;
+    }
+
+    const leftMax  = Math.max(0, ...data.vacancies, ...data.promotions);
+    const rightMax = Math.max(0, ...data.eligibleAvg, ...data.strength);
+
+    window.chartRef = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: data.labels,
+        datasets: [
+          {
+            label: 'Vacancies Created',
+            data: data.vacancies,
+            borderRadius: 6,
+            maxBarThickness: 28,
+            categoryPercentage: 0.72,
+            barPercentage: 0.9,
+            yAxisID: 'yBars'
+          },
+          {
+            label: 'Promotions Made',
+            data: data.promotions,
+            borderRadius: 6,
+            maxBarThickness: 28,
+            categoryPercentage: 0.72,
+            barPercentage: 0.9,
+            yAxisID: 'yBars'
+          },
+          {
+            type: 'line',
+            label: (currentMode === 'monthly') ? 'Eligible (count)' : 'Eligible (yearly avg)',
+            data: data.eligibleAvg,
+            yAxisID: 'yLine',
+            tension: 0.35,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            fill: false
+          },
+          {
+            type: 'line',
+            label: data.strengthTitle,
+            data: data.strength,
+            yAxisID: 'yLine',
+            tension: 0.35,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { usePointStyle: true, padding: 14 } },
+          tooltip: {
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            padding: 10,
+            displayColors: true,
+            callbacks: {
+              title: (items) => `${(currentMode === 'monthly') ? 'Month' : 'Year'} ${items[0].label}`,
+              footer: (items) => {
+                const vac = items.find(i => i.dataset.label.includes('Vacancies'))?.raw ?? 0;
+                const pro = items.find(i => i.dataset.label.includes('Promotions'))?.raw ?? 0;
+                return `Net vacancies: ${vac - pro}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 16 }, title: { display: true, text: data.xTitle } },
+          yBars: {
+            beginAtZero: true,
+            suggestedMax: (Number.isFinite(leftMax) ? leftMax : 0) + 2,
+            grid: { color: 'rgba(0,0,0,0.06)' },
+            ticks: { precision: 0 },
+            title: { display: true, text: data.vacTitle }
+          },
+          yLine: {
+            position: 'right',
+            beginAtZero: true,
+            suggestedMax: (Number.isFinite(rightMax) ? rightMax : 0) + 2,
+            grid: { drawOnChartArea: false },
+            ticks: { precision: 0 },
+            title: { display: true, text: data.eligTitle }
+          }
+        }
       }
-    } catch (e) {
-      console.error('renderAnalytics override error:', e);
+    });
+
+    // ---- Right-hand eligible list ----
+    const el = document.getElementById('eligibleList');
+    if (el) {
+      el.innerHTML = '';
+      data.labels.forEach(lbl => {
+        const namesSet = data.eligibleNamesByLabel.get(lbl) || new Set();
+        const names = Array.from(namesSet);
+        const shown = names.slice(0, 20);
+        const more  = names.length > 20 ? ` (+${names.length - 20} more)` : '';
+        const row = document.createElement('div');
+        row.className = 'month-row';
+        row.innerHTML = `<strong>${lbl}</strong> <span class="tag">${(currentMode === 'monthly') ? names.length + ' eligible' : names.length + ' unique eligible'}</span><div style="font-size:13px;margin-top:4px;">${shown.length ? shown.join(', ') + more : '<em>None</em>'}</div>`;
+        el.appendChild(row);
+      });
     }
   };
 
@@ -892,14 +962,14 @@ function renderAnalytics(level) {
         window.renderAnalytics(level);
       });
     }
-    // Try an initial repaint after a small delay to allow data to be loaded
+    // Initial render (after a small delay for data)
     setTimeout(() => {
       const level = (levelSel && levelSel.value) ? levelSel.value : 'Level-1';
       try { window.renderAnalytics(level); } catch(e) {}
     }, 100);
   });
 })();
-// ===== End injected block =====
 </script>
+
 </body>
 </html>
