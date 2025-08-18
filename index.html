@@ -1,88 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Officer Promotion Simulator</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-        .container { max-width: 900px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px; }
-        h1 { text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background: #eee; position: sticky; top: 0; }
-        input[type="number"], input[type="date"], select { width: 100%; padding: 5px; box-sizing: border-box; }
-        button { padding: 10px 20px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        .scroll-pane { max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; }
-        pre { background: #f0f0f0; padding: 10px; border-radius: 4px; }
-        .controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .controls-row label { font-weight: 600; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Officer Promotion Simulator — with Monthly Analytics</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 1100px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 8px; }
+    h1 { text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background: #eee; position: sticky; top: 0; }
+    input[type="number"], input[type="date"], select { width: 100%; padding: 5px; box-sizing: border-box; }
+    button { padding: 10px 20px; background: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .scroll-pane { max-height: 300px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; }
+    pre { background: #f0f0f0; padding: 10px; border-radius: 4px; }
+    .controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .controls-row label { font-weight: 600; }
+
+    /* New: analytics layout */
+    .analytics { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
+    .card { background: #fff; border: 1px solid #e4e4e4; border-radius: 8px; padding: 12px; }
+    .card h3 { margin: 0 0 8px 0; }
+    .eligible-list { max-height: 360px; overflow: auto; border: 1px dashed #ddd; padding: 8px; border-radius: 6px; }
+    .month-row { margin-bottom: 10px; }
+    .month-row .tag { display: inline-block; padding: 2px 6px; border-radius: 999px; background: #eef; font-size: 12px; margin-left: 6px; }
+
+    @media (max-width: 980px) {
+      .analytics { grid-template-columns: 1fr; }
+    }
+  </style>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="container">
-    <h1>Officer Promotion Simulator</h1>
+  <h1>Officer Promotion Simulator</h1>
 
-    <h2>Officers List</h2>
-    <div class="scroll-pane">
-        <table id="officerListTable">
-            <thead></thead>
-            <tbody></tbody>
-        </table>
-    </div>
-    <div style="text-align:center; margin-bottom:20px;">
-        <button id="refreshBtn">Refresh List</button>
-    </div>
-
-    <h2>Sanctioned Strength</h2>
-    <table id="sanctionedStrengthTable">
-        <tr>
-            <th>Rank</th>
-            <th>Strength</th>
-            <th>Deputation Strength</th>
-        </tr>
-        <tr><td>Apex</td><td><input type="number" value="1"></td><td><input type="number" value="0"></td></tr>
-        <tr><td>HAG</td><td><input type="number" value="6"></td><td><input type="number" value="1"></td></tr>
-        <tr><td>SAG</td><td><input type="number" value="46"></td><td><input type="number" value="10"></td></tr>
-        <tr><td>JAG</td><td><input type="number" value="164"></td><td><input type="number" value="15"></td></tr>
-        <tr><td>STS</td><td><input type="number" value="249"></td><td><input type="number" value="10"></td></tr>
-        <tr><td>JTS</td><td><input type="number" value="262"></td><td><input type="number" value="2"></td></tr>
+  <h2>Officers List</h2>
+  <div class="scroll-pane">
+    <table id="officerListTable">
+      <thead></thead>
+      <tbody></tbody>
     </table>
+  </div>
+  <div style="text-align:center; margin-bottom:20px;">
+    <button id="refreshBtn">Refresh List</button>
+  </div>
 
-    <h2>Promotion Criteria (Years)</h2>
-    <table id="promotionCriteriaTable">
-        <tr>
-            <th>Rank</th>
-            <th>Criteria</th>
-            <th>Value</th>
-            <th>Regular Service From</th>
-        </tr>
-    </table>
+  <h2>Sanctioned Strength</h2>
+  <table id="sanctionedStrengthTable">
+    <tr>
+      <th>Rank</th>
+      <th>Strength</th>
+      <th>Deputation Strength</th>
+    </tr>
+    <tr><td>Apex</td><td><input type="number" value="1"></td><td><input type="number" value="0"></td></tr>
+    <tr><td>HAG</td><td><input type="number" value="6"></td><td><input type="number" value="1"></td></tr>
+    <tr><td>SAG</td><td><input type="number" value="46"></td><td><input type="number" value="10"></td></tr>
+    <tr><td>JAG</td><td><input type="number" value="164"></td><td><input type="number" value="15"></td></tr>
+    <tr><td>STS</td><td><input type="number" value="249"></td><td><input type="number" value="10"></td></tr>
+    <tr><td>JTS</td><td><input type="number" value="262"></td><td><input type="number" value="2"></td></tr>
+  </table>
 
-    <h2>Simulation Start Date</h2>
-    <input type="date" id="startDate" value="2024-12-01">
+  <h2>Promotion Criteria (Years)</h2>
+  <table id="promotionCriteriaTable">
+    <tr>
+      <th>Rank</th>
+      <th>Criteria</th>
+      <th>Value</th>
+      <th>Regular Service From</th>
+    </tr>
+  </table>
 
-    <div style="margin-top: 20px; text-align: center;">
-        <button id="executeBtn">Execute Simulation</button>
+  <h2>Simulation Start Date</h2>
+  <input type="date" id="startDate" value="2024-12-01" />
+
+  <div style="margin-top: 20px; text-align: center;">
+    <button id="executeBtn">Execute Simulation</button>
+  </div>
+
+  <h2>Results</h2>
+  <div id="result"></div>
+
+  <!-- Filter controls are OUTSIDE the scroll pane -->
+  <div id="resultsFilter" class="controls-row" style="margin: 10px 0;">
+    <label for="filterDate">Show serving as on:</label>
+    <input type="date" id="filterDate" />
+    <button id="applyFilterBtn">Apply</button>
+  </div>
+
+  <!-- SINGLE scroll pane for results table -->
+  <div id="resultsPane" class="scroll-pane"></div>
+
+  <!-- Optional: JSON download link kept (hidden until used) -->
+  <a id="downloadJsonLink" href="#" download="simulation_results.json" style="display:none;">Download JSON</a>
+
+  <!-- NEW: Monthly Analytics Pane -->
+  <h2 style="margin-top: 28px;">Monthly Analytics</h2>
+  <div class="controls-row" style="margin: 10px 0;">
+    <label for="levelSelect">Level:</label>
+    <select id="levelSelect" style="max-width: 220px;">
+      <option>JTS</option>
+      <option selected>STS</option>
+      <option>JAG</option>
+      <option>SAG</option>
+      <option>HAG</option>
+      <option>Apex</option>
+    </select>
+  </div>
+
+  <div class="analytics">
+    <div class="card">
+      <h3>Bar Graph (per month)</h3>
+      <canvas id="monthlyChart" height="220"></canvas>
     </div>
-
-    <h2>Results</h2>
-    <div id="result"></div>
-
-    <!-- Filter controls are OUTSIDE the scroll pane -->
-    <div id="resultsFilter" class="controls-row" style="margin: 10px 0;">
-        <label for="filterDate">Show serving as on:</label>
-        <input type="date" id="filterDate">
-        <button id="applyFilterBtn">Apply</button>
+    <div class="card">
+      <h3>Eligible Officers by Month</h3>
+      <div id="eligibleList" class="eligible-list"></div>
     </div>
-
-    <!-- SINGLE scroll pane for results table -->
-    <div id="resultsPane" class="scroll-pane"></div>
-
-    <!-- Optional: JSON download link kept (hidden until used) -->
-    <a id="downloadJsonLink" href="#" download="simulation_results.json" style="display:none;">Download JSON</a>
-
+  </div>
 </div>
 
 <script>
@@ -96,25 +134,11 @@ function formatDateDDMMYYYY(dateStr) {
   const yyyy = date.getFullYear();
   return `${dd}-${mm}-${yyyy}`;
 }
-function parseDate(v) {
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d) ? null : d;
-}
-function addDays(d, n) {
-  const dd = new Date(d);
-  dd.setDate(dd.getDate() + n);
-  return dd;
-}
-function addMonths(d, n) {
-  const dd = new Date(d);
-  dd.setMonth(dd.getMonth() + n);
-  return dd;
-}
-function yearsBetween(from, to) {
-  if (!from || !to) return 0;
-  return (to - from) / (365 * 24 * 60 * 60 * 1000);
-}
+function parseDate(v) { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; }
+function addDays(d, n) { const dd = new Date(d); dd.setDate(dd.getDate() + n); return dd; }
+function addMonths(d, n) { const dd = new Date(d); dd.setMonth(dd.getMonth() + n); return dd; }
+function yearsBetween(from, to) { if (!from || !to) return 0; return (to - from) / (365 * 24 * 60 * 60 * 1000); }
+function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 
 // ---------- Data Loading & Table Rendering ----------
 let OFFICERS = []; // in-memory officers list
@@ -123,18 +147,14 @@ function loadOfficerList() {
   fetch('officers_list_1.json')
     .then(res => res.json())
     .then(data => {
-      // Normalize a few expected keys and filter out retired
       const today = new Date();
-
       OFFICERS = data
         .filter(o => {
           const ret = o['RetirementDate'] || o['Date_of_Retirement'];
-          if (!ret) return true;
-          return parseDate(ret) >= today;
+          if (!ret) return true; return parseDate(ret) >= today;
         })
         .map((o, i) => ({
           originalIndex: i,
-          // keep originals but ensure some canonical keys
           ...o,
           ID: o.ID ?? o.Id ?? o.id,
           CurrentRank: o['Current Rank'] ?? o['Current_Rank'] ?? o['Rank'] ?? o['currentRank'],
@@ -173,8 +193,9 @@ function loadOfficerList() {
     .catch(err => console.error('Error loading officer list:', err));
 }
 
-// ---------- Promotion Criteria UI (adds rows + “Regular Service From”) ----------
+// ---------- Promotion Criteria UI ----------
 const RANKS = ["STS","JAG","SAG","HAG","Apex"]; // promotion targets in ascending order
+const ALL_LEVELS = ["JTS","STS","JAG","SAG","HAG","Apex"]; // for analytics selection
 const FEEDER = { STS:"JTS", JAG:"STS", SAG:"JAG", HAG:"SAG", Apex:"HAG" };
 
 const DEFAULT_CRITERIA = {
@@ -226,9 +247,8 @@ function buildPromotionCriteriaTable() {
   });
 }
 
-// ---------- Reading inputs from UI ----------
+// ---------- Reading inputs ----------
 function readSanctionedStrength() {
-  // capacity = sanctioned + deputation (per your request)
   const capacity = {};
   document.querySelectorAll('#sanctionedStrengthTable tr').forEach((row, i) => {
     if (i === 0) return;
@@ -254,9 +274,7 @@ function readPromotionCriteria() {
   return criteria;
 }
 
-// ---------- Eligibility using "Regular Service From" ----------
 function getDateFor(off, token) {
-  // token ∈ {"DOJ","P_STS","P_JAG","P_SAG","P_HAG"}
   switch (token) {
     case "DOJ":  return parseDate(off.DOJ);
     case "P_STS":return parseDate(off.P_STS);
@@ -279,7 +297,6 @@ function eligible(off, targetRank, now, crit) {
     return getDateFor(off, token);
   };
 
-  // Build per-rank rules mirroring your Python logic, but respecting serviceFrom
   if (targetRank === "STS") {
     const yrs = yearsBetween(from("min_years_at_JTS", "DOJ"), now);
     return yrs >= (need("min_years_at_JTS") ?? Infinity);
@@ -315,11 +332,21 @@ function eligible(off, targetRank, now, crit) {
   return false;
 }
 
+// ---------- Simulation + Monthly Analytics ----------
+let monthlyStats = {}; // { 'YYYY-MM': { Level: { eligible:[{ID,Name}], vacanciesCreated:n, promotionsMade:n } } }
+
+function ensureMonthLevel(mKey, level) {
+  if (!monthlyStats[mKey]) monthlyStats[mKey] = {};
+  if (!monthlyStats[mKey][level]) monthlyStats[mKey][level] = { eligible: [], vacanciesCreated: 0, promotionsMade: 0 };
+}
+
 function executeSimulation() {
   if (!OFFICERS.length) {
     document.getElementById('result').innerHTML = `<pre>No officers loaded.</pre>`;
     return;
   }
+
+  monthlyStats = {}; // reset
 
   const capacity = readSanctionedStrength();
   const criteria = readPromotionCriteria();
@@ -329,48 +356,60 @@ function executeSimulation() {
     return (!mx || (r && r > mx)) ? r : mx;
   }, null) || startDate;
 
-  // Compute vacancies initially
   const ranksAll = ["JTS","STS","JAG","SAG","HAG","Apex"];
   const incumbents = Object.fromEntries(ranksAll.map(r => [r, 0]));
-  OFFICERS.forEach(o => {
-    const rk = (o.CurrentRank || o['Current Rank'] || '').trim();
-    if (incumbents[rk] !== undefined) incumbents[rk]++;
-  });
-  const vacancies = Object.fromEntries(ranksAll.map(r => [
-    r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))
-  ]));
+  OFFICERS.forEach(o => { const rk = (o.CurrentRank || o['Current Rank'] || '').trim(); if (incumbents[rk] !== undefined) incumbents[rk]++; });
+  const vacancies = Object.fromEntries(ranksAll.map(r => [r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))]));
 
-  // Deep copy officers
-  const officers = OFFICERS.map((o, i) => ({
-          originalIndex: i, ...o }));
+  const officers = OFFICERS.map((o, i) => ({ originalIndex: i, ...o }));
 
-  // Promotion helper
-  function promote(off, targetRank, when) {
-    const feeder = FEEDER[targetRank];
-    if (!feeder) return;
+  function promote(off, targetRank, when, mKey) {
+    const feeder = FEEDER[targetRank]; if (!feeder) return;
     const keyMap = { STS:'P_STS', JAG:'P_JAG', SAG:'P_SAG', HAG:'P_HAG', Apex:'P_Apex' };
     off[keyMap[targetRank]] = when.toISOString();
     off.CurrentRank = targetRank;
     vacancies[targetRank] = Math.max(0, (vacancies[targetRank] ?? 0) - 1);
+    // creating vacancy in feeder due to promotion
     vacancies[feeder] = (vacancies[feeder] ?? 0) + 1;
+    ensureMonthLevel(mKey, feeder);
+    monthlyStats[mKey][feeder].vacanciesCreated += 1;
+    // record promotion made into targetRank
+    ensureMonthLevel(mKey, targetRank);
+    monthlyStats[mKey][targetRank].promotionsMade += 1;
   }
 
   // Run simulation month-by-month
   let now = new Date(startDate);
   while (now <= lastRet) {
     const windowEnd = addMonths(now, 1);
+    const mKey = monthKey(now);
 
-    // Retirements
+    // 1) Eligible lists for each target rank at the start of the month
+    ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
+      const feeder = FEEDER[targetRank];
+      const candidates = officers
+        .filter(off => !off._retired)
+        .filter(off => (off.CurrentRank || '').toUpperCase() === feeder.toUpperCase())
+        .filter(off => eligible(off, targetRank, now, criteria))
+        .sort((a,b) => a.originalIndex - b.originalIndex);
+
+      ensureMonthLevel(mKey, targetRank);
+      monthlyStats[mKey][targetRank].eligible = candidates.map(c => ({ ID: c.ID, Name: c.Name ?? c['Name'] ?? c.ID }));
+    });
+
+    // 2) Retirements in the month → vacancy created at that rank
     officers.forEach(off => {
       const ret = parseDate(off.Retirement);
       if (ret && ret >= now && ret < windowEnd) {
         const r = (off.CurrentRank || '').trim();
         if (vacancies[r] !== undefined) vacancies[r] += 1;
         off._retired = true;
+        ensureMonthLevel(mKey, r);
+        monthlyStats[mKey][r].vacanciesCreated += 1;
       }
     });
 
-    // Promotions top-down
+    // 3) Promotions top-down in the month
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
       if ((vacancies[targetRank] ?? 0) <= 0) return;
       const feeder = FEEDER[targetRank];
@@ -382,7 +421,7 @@ function executeSimulation() {
 
       let slots = vacancies[targetRank];
       for (let i = 0; i < candidates.length && slots > 0; i++) {
-        promote(candidates[i], targetRank, addDays(now, 1));
+        promote(candidates[i], targetRank, addDays(now, 1), mKey);
         slots--;
       }
     });
@@ -402,13 +441,12 @@ function executeSimulation() {
     };
   });
 
-  // Build result object
   const result = {
     startedOn: startDate.toISOString(),
     capacityPerRank: capacity,
     finalVacancies: vacancies,
     officers: officers.map((o, i) => ({
-          originalIndex: i,
+      originalIndex: i,
       ID: o.ID,
       Name: o.Name ?? o['Name'],
       CurrentRank: o.CurrentRank,
@@ -422,39 +460,29 @@ function executeSimulation() {
     }))
   };
 
-  // Save globally for date filter
   window.resultData = result;
   window.originalDatesMap = originalDates;
+  window.monthlyStats = monthlyStats;
 
-  // Show summary
   document.getElementById('result').innerHTML =
-    `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}
-Final Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
+    `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}\nFinal Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
 
-  // Default the filter date (outside scroll pane) to the simulation start date
   const filterInput = document.getElementById('filterDate');
-  if (!filterInput.value) {
-    filterInput.value = startDate.toISOString().split('T')[0];
-  }
-
-  // Render once using the current filter date
+  if (!filterInput.value) filterInput.value = startDate.toISOString().split('T')[0];
   recalcRanksAndDisplay(filterInput.value);
+
+  // Initialize the analytics (default level from dropdown)
+  const level = document.getElementById('levelSelect').value;
+  renderAnalytics(level);
 }
 
 function recalcRanksAndDisplay(selectedDate) {
   const filterDate = parseDate(selectedDate);
-  const result = window.resultData;
-  const originalDates = window.originalDatesMap;
-
+  const result = window.resultData; const originalDates = window.originalDatesMap;
   if (!result) return;
 
-  // Keep simulation order, filter out retirees (show only serving as on the filter date)
-  let filtered = result.officers.filter(o => {
-    const ret = parseDate(o.RetirementDate);
-    return !ret || ret >= filterDate;
-  });
+  let filtered = result.officers.filter(o => { const ret = parseDate(o.RetirementDate); return !ret || ret >= filterDate; });
 
-  // Assign ranks in list order based on capacity
   const caps = {
     Apex: result.capacityPerRank["Apex"] || 0,
     HAG: result.capacityPerRank["HAG"] || 0,
@@ -465,101 +493,118 @@ function recalcRanksAndDisplay(selectedDate) {
 
   let counters = { Apex: 0, HAG: 0, SAG: 0, JAG: 0, STS: 0 };
   filtered.forEach(o => {
-    if (counters.Apex < caps.Apex) {
-      o.CurrentRank = "Apex"; counters.Apex++;
-    } else if (counters.HAG < caps.HAG) {
-      o.CurrentRank = "HAG"; counters.HAG++;
-    } else if (counters.SAG < caps.SAG) {
-      o.CurrentRank = "SAG"; counters.SAG++;
-    } else if (counters.JAG < caps.JAG) {
-      o.CurrentRank = "JAG"; counters.JAG++;
-    } else if (counters.STS < caps.STS) {
-      o.CurrentRank = "STS"; counters.STS++;
-    } else {
-      o.CurrentRank = "JTS";
-    }
+    if (counters.Apex < caps.Apex) { o.CurrentRank = "Apex"; counters.Apex++; }
+    else if (counters.HAG < caps.HAG) { o.CurrentRank = "HAG"; counters.HAG++; }
+    else if (counters.SAG < caps.SAG) { o.CurrentRank = "SAG"; counters.SAG++; }
+    else if (counters.JAG < caps.JAG) { o.CurrentRank = "JAG"; counters.JAG++; }
+    else if (counters.STS < caps.STS) { o.CurrentRank = "STS"; counters.STS++; }
+    else { o.CurrentRank = "JTS"; }
   });
 
-  // Serial numbers in rank block order but preserving officer order
-  let serialMap = {};
-  let serialCounter = 1;
-  function assignSerialsForRank(rank) {
-    filtered.forEach(o => {
-      if (o.CurrentRank === rank && serialMap[o.ID] == null) {
-        serialMap[o.ID] = serialCounter++;
-      }
-    });
-  }
+  let serialMap = {}; let serialCounter = 1;
+  function assignSerialsForRank(rank) { filtered.forEach(o => { if (o.CurrentRank === rank && serialMap[o.ID] == null) serialMap[o.ID] = serialCounter++; }); }
   ["Apex","HAG","SAG","JAG","STS","JTS"].forEach(assignSerialsForRank);
 
-  // Build results table inside the SINGLE scroll pane
   const resultsPane = document.getElementById('resultsPane');
-  resultsPane.innerHTML = ''; // clear
-
-  const table = document.createElement('table');
-  table.style.width = '100%';
-  table.style.borderCollapse = 'collapse';
-
+  resultsPane.innerHTML = '';
+  const table = document.createElement('table'); table.style.width = '100%'; table.style.borderCollapse = 'collapse';
   const cols = ["Serial", ...Object.keys(filtered[0] || {})];
-  const thead = document.createElement('thead');
-  thead.innerHTML = '<tr>' + cols.map(k => `<th>${k}</th>`).join('') + '</tr>';
+  const thead = document.createElement('thead'); thead.innerHTML = '<tr>' + cols.map(k => `<th>${k}</th>`).join('') + '</tr>';
   table.appendChild(thead);
-
   const tbody = document.createElement('tbody');
+
   filtered.forEach(row => {
     const tr = document.createElement('tr');
     cols.forEach(key => {
       const td = document.createElement('td');
-      if (key === "Serial") {
-        td.textContent = serialMap[row.ID] || '';
-      } else {
+      if (key === "Serial") { td.textContent = serialMap[row.ID] || ''; }
+      else {
         const val = row[key];
         const isDateField = String(key).toLowerCase().includes('date');
-
-        // Highlight forecasted promotion dates
         if (key.startsWith('Promotion_Date_to_')) {
-          const mapKey = {
-            Promotion_Date_to_STS: 'P_STS',
-            Promotion_Date_to_JAG: 'P_JAG',
-            Promotion_Date_to_SAG: 'P_SAG',
-            Promotion_Date_to_HAG: 'P_HAG',
-            Promotion_Date_to_Apex: 'P_Apex'
-          }[key];
+          const mapKey = { Promotion_Date_to_STS: 'P_STS', Promotion_Date_to_JAG: 'P_JAG', Promotion_Date_to_SAG: 'P_SAG', Promotion_Date_to_HAG: 'P_HAG', Promotion_Date_to_Apex: 'P_Apex' }[key];
           const originallyBlank = originalDates[row.ID] && !originalDates[row.ID][mapKey];
-          if (originallyBlank && val) {
-            td.style.color = 'blue';
-            td.style.fontWeight = 'bold';
-          }
+          if (originallyBlank && val) { td.style.color = 'blue'; td.style.fontWeight = 'bold'; }
         }
-
         td.textContent = isDateField ? formatDateDDMMYYYY(val) : (val ?? '');
       }
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
   });
-  table.appendChild(tbody);
-  resultsPane.appendChild(table);
+  table.appendChild(tbody); resultsPane.appendChild(table);
+}
+
+// ---------- Analytics UI ----------
+let chartRef = null;
+
+function renderAnalytics(level) {
+  const stats = window.monthlyStats || {}; const months = Object.keys(stats).sort();
+  const labels = months;
+  const vacancies = months.map(m => (stats[m][level]?.vacanciesCreated) || 0);
+  const promotions = months.map(m => (stats[m][level]?.promotionsMade) || 0);
+  const eligibleCount = months.map(m => (stats[m][level]?.eligible?.length) || 0);
+
+  const ctx = document.getElementById('monthlyChart');
+  if (chartRef) { chartRef.destroy(); }
+  chartRef = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Vacancies Created', data: vacancies },
+        { label: 'Promotions Made', data: promotions },
+        { label: 'Eligible Officers', data: eligibleCount }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            afterLabel: function(context) {
+              // Show up to 5 names in tooltip for eligible series
+              if (context.dataset.label !== 'Eligible Officers') return '';
+              const m = labels[context.dataIndex];
+              const list = (stats[m][level]?.eligible || []).map(o => o.Name || o.ID);
+              const shown = list.slice(0, 5);
+              const more = list.length > 5 ? ` (+${list.length - 5} more)` : '';
+              return shown.length ? `\n${shown.join(', ')}${more}` : '';
+            }
+          }
+        }
+      },
+      scales: { x: { stacked: false }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+
+  // Build Eligible Officers by Month list (full names)
+  const el = document.getElementById('eligibleList');
+  el.innerHTML = '';
+  months.forEach(m => {
+    const names = (stats[m][level]?.eligible || []).map(o => o.Name || o.ID);
+    const row = document.createElement('div');
+    row.className = 'month-row';
+    row.innerHTML = `<strong>${m}</strong> <span class="tag">${names.length} eligible</span><div style="font-size: 13px; margin-top: 4px;">${names.length ? names.join(', ') : '<em>None</em>'}</div>`;
+    el.appendChild(row);
+  });
 }
 
 // ---------- Init ----------
-document.addEventListener('DOMContentLoaded', () => {
+ document.addEventListener('DOMContentLoaded', () => {
   loadOfficerList();
   buildPromotionCriteriaTable();
   document.getElementById('executeBtn').addEventListener('click', executeSimulation);
   document.getElementById('refreshBtn').addEventListener('click', loadOfficerList);
 
-  // Hook up filter controls (outside scroll pane)
   document.getElementById('applyFilterBtn').addEventListener('click', () => {
-    const v = document.getElementById('filterDate').value;
-    recalcRanksAndDisplay(v);
+    const v = document.getElementById('filterDate').value; recalcRanksAndDisplay(v);
   });
-  document.getElementById('filterDate').addEventListener('change', (e) => {
-    recalcRanksAndDisplay(e.target.value);
-  });
+  document.getElementById('filterDate').addEventListener('change', (e) => { recalcRanksAndDisplay(e.target.value); });
+
+  document.getElementById('levelSelect').addEventListener('change', (e) => { renderAnalytics(e.target.value); });
 });
 </script>
-
 </body>
-
 </html>
