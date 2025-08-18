@@ -87,8 +87,11 @@
     </tr>
   </table>
 
-  <h2>Simulation Start Date</h2>
-  <input type="date" id="startDate" value="2024-12-01" />
+  <h2>Simulation Dates</h2>
+  <div class="controls-row">
+    <div><label>Start:</label> <input type="date" id="startDate" value="2024-12-01" /></div>
+    <div><label>End:</label> <input type="date" id="endDate" value="2057-12-31" /></div>
+  </div>
 
   <div style="margin-top: 20px; text-align: center;">
     <button id="executeBtn">Execute Simulation</button>
@@ -170,6 +173,33 @@ function anchorize(dateObj, mode) {
     case 'same_date':
     default: return d;
   }
+}
+
+// Helper to construct a brand-new JTS officer object
+function makeNewJTSHire(idStr, joinDateISO) {
+  return {
+    originalIndex: OFFICERS.length, // appended at end
+    ID: idStr,
+    Name: idStr,
+    CurrentRank: "JTS",
+    DOJ: joinDateISO,
+    P_STS: null, P_JAG: null, P_SAG: null, P_HAG: null, P_Apex: null,
+    Retirement: retirementDateFromDOJ(joinDateISO)// can be set later if you have a formula
+  };
+
+// Compute a retirement date given a DOJ: add random 30-35 years, snap to the last day of that month
+function retirementDateFromDOJ(dojISO) {
+  const doj = new Date(dojISO);
+  if (isNaN(doj)) return null;
+  const addYears = 30 + Math.floor(Math.random() * 6); // 30..35 inclusive
+  const y = doj.getFullYear() + addYears;
+  const m = doj.getMonth(); // 0..11
+  // Last day of that target month: day 0 of next month
+  const lastDay = new Date(y, m + 1, 0);
+  // Normalize to ISO (keep local time midnight)
+  return lastDay.toISOString();
+}
+
 }
 
 // ---------- Data Loading & Table Rendering ----------
@@ -399,6 +429,9 @@ function executeSimulation() {
   const capacity = readSanctionedStrength();
   const criteria = readPromotionCriteria();
   const startDate = parseDate(document.getElementById('startDate').value);
+  const endDateInput = document.getElementById('endDate');
+  const userEndDate = endDateInput ? parseDate(endDateInput.value) : parseDate('2057-12-31');
+
 
   // Deep-copy officers so promotions don't stack across runs
   const officers = OFFICERS.map((o, i) => ({ originalIndex: i, ...JSON.parse(JSON.stringify(o)) }));
@@ -414,6 +447,9 @@ function executeSimulation() {
   officers.forEach(o => { const rk = (o.CurrentRank || o['Current Rank'] || '').trim(); if (incumbents[rk] !== undefined) incumbents[rk]++; });
   const vacancies = Object.fromEntries(ranksAll.map(r => [r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))]));
 
+  // Track JTS vacancies created per calendar year
+  const jtsVacanciesPerYear = {}; // { 'YYYY': count }
+
   function promote(off, targetRank, when, mKey) {
     const feeder = FEEDER[targetRank]; if (!feeder) return;
     const keyMap = { STS:'P_STS', JAG:'P_JAG', SAG:'P_SAG', HAG:'P_HAG', Apex:'P_Apex' };
@@ -423,15 +459,49 @@ function executeSimulation() {
     vacancies[feeder] = (vacancies[feeder] ?? 0) + 1;
     ensureMonthLevel(mKey, feeder);
     monthlyStats[mKey][feeder].vacanciesCreated += 1;
+    if (feeder === 'JTS') { const y = String(when.getFullYear()); jtsVacanciesPerYear[y] = (jtsVacanciesPerYear[y] || 0) + 1; }
     ensureMonthLevel(mKey, targetRank);
     monthlyStats[mKey][targetRank].promotionsMade += 1;
   }
 
   // Run simulation month-by-month
   let now = new Date(startDate);
-  while (now <= lastRet) {
+  const endBound = userEndDate || lastRet;
+  while (now <= endBound) {
     const windowEnd = addMonths(now, 1);
     const mKey = monthKey(now);
+    /* JTS June intake */
+    if (now.getMonth() === 5) { // June (0-based index)
+      const y = String(now.getFullYear());
+      const batchSize = jtsVacanciesPerYear[y] || 0;
+      if (batchSize > 0) {
+        const joinISO = new Date(now.getFullYear(), 5, 1).toISOString();
+        const half = Math.floor(batchSize / 2);
+        const drCount = batchSize - half; // DR gets the extra if odd
+        const pqCount = half;
+
+        // Create DR ids: YYYYDR1..drCount ; PQ ids: YYYYPQ1..pqCount
+        for (let i = 1; i <= drCount; i++) {
+          const id = `${y}DR${i}`;
+          officers.push(makeNewJTSHire(id, joinISO));
+          ensureMonthLevel(mKey, 'JTS');
+          monthlyStats[mKey]['JTS'].promotionsMade += 0; // no promotion, but ensures level exists
+        }
+        for (let i = 1; i <= pqCount; i++) {
+          const id = `${y}PQ${i}`;
+          officers.push(makeNewJTSHire(id, joinISO));
+          ensureMonthLevel(mKey, 'JTS');
+          monthlyStats[mKey]['JTS'].promotionsMade += 0;
+        }
+
+        // These hires consume JTS vacancies immediately
+        vacancies['JTS'] = Math.max(0, (vacancies['JTS'] || 0) - batchSize);
+
+        // Reset the counter for the year after intake
+        jtsVacanciesPerYear[y] = 0;
+      }
+    }
+
 
     // 1) Eligible lists for each target rank at the start of the month
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
@@ -455,6 +525,7 @@ function executeSimulation() {
         off._retired = true;
         ensureMonthLevel(mKey, r);
         monthlyStats[mKey][r].vacanciesCreated += 1;
+        if (r === 'JTS') { const y = String(now.getFullYear()); jtsVacanciesPerYear[y] = (jtsVacanciesPerYear[y] || 0) + 1; }
       }
     });
 
@@ -509,6 +580,7 @@ function executeSimulation() {
 
   const result = {
     startedOn: startDate.toISOString(),
+    endedOn: (endBound ? endBound.toISOString() : null),
     capacityPerRank: capacity,
     finalVacancies: vacancies,
     officers: officers.map((o, i) => ({
@@ -621,10 +693,11 @@ function renderAnalytics(level) {
   const vacancies = months.map(m => (stats[m][level]?.vacanciesCreated) || 0);
   const promotions = months.map(m => (stats[m][level]?.promotionsMade) || 0);
   const eligibleCount = months.map(m => (stats[m][level]?.eligible?.length) || 0);
+  const strength = months.map(m => (stats[m][level]?.strength) || 0);
 
   // Separate caps for left (bars) and right (line) axes for readability
   const leftMax  = Math.max(0, ...vacancies, ...promotions);
-  const rightMax = Math.max(0, ...eligibleCount);
+  const rightMax = Math.max(0, ...eligibleCount, ...strength);
 
   const canvas = document.getElementById('monthlyChart');
   if (chartRef) { chartRef.destroy(); chartRef = null; }
@@ -656,6 +729,16 @@ function renderAnalytics(level) {
           type: 'line',
           label: 'Eligible Officers',
           data: eligibleCount,
+          yAxisID: 'yLine',
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          fill: false
+        },
+        {
+          type: 'line',
+          label: 'Strength (end of month)',
+          data: strength,
           yAxisID: 'yLine',
           tension: 0.35,
           pointRadius: 3,
@@ -713,7 +796,7 @@ function renderAnalytics(level) {
           suggestedMax: (Number.isFinite(rightMax) ? rightMax : 0) + 2,
           grid: { drawOnChartArea: false }, // keep the grid clean
           ticks: { precision: 0 },
-          title: { display: true, text: 'Eligible' }
+          title: { display: true, text: 'Eligible / Strength' }
         }
       }
     }
