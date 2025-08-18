@@ -30,11 +30,17 @@
     @media (max-width: 980px) {
       .analytics { grid-template-columns: 1fr; }
     }
-    /* Prevent Chart.js resize feedback by fixing the chart area height */
+
+    /* fixed, consistent size; prevents resize feedback */
+    /* Let CSS define a stable, responsive box for the chart */
     .card #monthlyChart {
-      height: 260px !important; /* pick your height */
-      max-height: 260px !important;
+      width: 100%;
+      max-width: 100%;
+      aspect-ratio: 2 / 1;    /* tweak to taste (e.g., 16/9, 3/2) */
+      height: auto !important;/* canvas height derives from aspect ratio */
+      display: block;
     }
+
 
   </style>
   <!-- Chart.js CDN -->
@@ -77,6 +83,7 @@
       <th>Criteria</th>
       <th>Value</th>
       <th>Regular Service From</th>
+      <th>Count From</th> <!-- NEW column -->
     </tr>
   </table>
 
@@ -120,7 +127,7 @@
   <div class="analytics">
     <div class="card">
       <h3>Bar Graph (per month)</h3>
-      <canvas id="monthlyChart" height="220"></canvas>
+      <canvas id="monthlyChart"></canvas>
     </div>
     <div class="card">
       <h3>Eligible Officers by Month</h3>
@@ -145,6 +152,19 @@ function addDays(d, n) { const dd = new Date(d); dd.setDate(dd.getDate() + n); r
 function addMonths(d, n) { const dd = new Date(d); dd.setMonth(dd.getMonth() + n); return dd; }
 function yearsBetween(from, to) { if (!from || !to) return 0; return (to - from) / (365 * 24 * 60 * 60 * 1000); }
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+
+// NEW: anchoring helper for "Count From" selection
+function anchorize(dateObj, mode) {
+  if (!dateObj) return null;
+  const d = new Date(dateObj);
+  if (isNaN(d)) return null;
+  switch (mode) {
+    case 'jan1_same_year': return new Date(d.getFullYear(), 0, 1);
+    case 'jan1_next_year': return new Date(d.getFullYear() + 1, 0, 1);
+    case 'same_date':
+    default: return d;
+  }
+}
 
 // ---------- Data Loading & Table Rendering ----------
 let OFFICERS = []; // in-memory officers list
@@ -204,24 +224,25 @@ const RANKS = ["STS","JAG","SAG","HAG","Apex"]; // promotion targets in ascendin
 const ALL_LEVELS = ["JTS","STS","JAG","SAG","HAG","Apex"]; // for analytics selection
 const FEEDER = { STS:"JTS", JAG:"STS", SAG:"JAG", HAG:"SAG", Apex:"HAG" };
 
+// DEFAULTS extended with anchorMode for each rule
 const DEFAULT_CRITERIA = {
-  Apex: { rows: [{criteria:"min_years_at_HAG", value:2, serviceFrom:"P_HAG"}] },
+  Apex: { rows: [{criteria:"min_years_at_HAG", value:2, serviceFrom:"P_HAG", anchorMode:"same_date"}] },
   HAG:  { rows: [
-           {criteria:"min_years_from_JTS", value:25, serviceFrom:"DOJ"},
-           {criteria:"min_years_at_SAG", value:1, serviceFrom:"P_SAG"},
-           {criteria:"or_min_years_at_SAG", value:3, serviceFrom:"P_SAG"},
+           {criteria:"min_years_from_JTS", value:25, serviceFrom:"DOJ",  anchorMode:"same_date"},
+           {criteria:"min_years_at_SAG",  value:1,  serviceFrom:"P_SAG", anchorMode:"same_date"},
+           {criteria:"or_min_years_at_SAG", value:3, serviceFrom:"P_SAG", anchorMode:"same_date"},
          ]},
   SAG:  { rows: [
-           {criteria:"min_years_from_JTS", value:17, serviceFrom:"DOJ"},
-           {criteria:"min_years_at_JAG", value:1, serviceFrom:"P_JAG"},
-           {criteria:"or_min_years_at_JAG", value:3, serviceFrom:"P_JAG"},
+           {criteria:"min_years_from_JTS", value:17, serviceFrom:"DOJ",  anchorMode:"same_date"},
+           {criteria:"min_years_at_JAG",  value:1,  serviceFrom:"P_JAG", anchorMode:"same_date"},
+           {criteria:"or_min_years_at_JAG", value:3, serviceFrom:"P_JAG", anchorMode:"same_date"},
          ]},
   JAG:  { rows: [
-           {criteria:"min_years_from_JTS", value:13, serviceFrom:"DOJ"},
-           {criteria:"min_years_at_STS", value:4, serviceFrom:"P_STS"},
-           {criteria:"or_min_years_at_STS", value:9, serviceFrom:"P_STS"},
+           {criteria:"min_years_from_JTS", value:13, serviceFrom:"DOJ",  anchorMode:"same_date"},
+           {criteria:"min_years_at_STS",  value:4,  serviceFrom:"P_STS", anchorMode:"same_date"},
+           {criteria:"or_min_years_at_STS", value:9, serviceFrom:"P_STS", anchorMode:"same_date"},
          ]},
-  STS:  { rows: [{criteria:"min_years_at_JTS", value:4, serviceFrom:"DOJ"}] }
+  STS:  { rows: [{criteria:"min_years_at_JTS", value:4, serviceFrom:"DOJ", anchorMode:"same_date"}] }
 };
 
 function buildPromotionCriteriaTable() {
@@ -229,14 +250,14 @@ function buildPromotionCriteriaTable() {
   const existingRows = table.querySelectorAll('tr').length;
   if (existingRows > 1) return; // already built
 
-  const addRow = (rank, criteriaName, value, serviceFrom) => {
+  const addRow = (rank, criteriaName, value, serviceFrom, anchorMode="same_date") => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${rank}</td>
       <td>${criteriaName}</td>
       <td><input type="number" step="0.01" value="${value}"></td>
       <td>
-        <select>
+        <select class="service-from">
           <option value="DOJ"${serviceFrom==="DOJ"?" selected":""}>From DOJ (JTS regular service)</option>
           <option value="P_STS"${serviceFrom==="P_STS"?" selected":""}>From STS date</option>
           <option value="P_JAG"${serviceFrom==="P_JAG"?" selected":""}>From JAG date</option>
@@ -244,12 +265,19 @@ function buildPromotionCriteriaTable() {
           <option value="P_HAG"${serviceFrom==="P_HAG"?" selected":""}>From HAG date</option>
         </select>
       </td>
+      <td>
+        <select class="anchor-mode">
+          <option value="same_date"${anchorMode==="same_date"?" selected":""}>From same date</option>
+          <option value="jan1_same_year"${anchorMode==="jan1_same_year"?" selected":""}>From 1 Jan (same year)</option>
+          <option value="jan1_next_year"${anchorMode==="jan1_next_year"?" selected":""}>From 1 Jan (following year)</option>
+        </select>
+      </td>
     `;
     table.appendChild(tr);
   };
 
   ["STS","JAG","SAG","HAG","Apex"].forEach(rank => {
-    DEFAULT_CRITERIA[rank].rows.forEach(r => addRow(rank, r.criteria, r.value, r.serviceFrom));
+    DEFAULT_CRITERIA[rank].rows.forEach(r => addRow(rank, r.criteria, r.value, r.serviceFrom, r.anchorMode || "same_date"));
   });
 }
 
@@ -273,9 +301,10 @@ function readPromotionCriteria() {
     const rank = row.cells[0].innerText.trim();
     const criteriaName = row.cells[1].innerText.trim();
     const value = parseFloat(row.cells[2].querySelector('input').value);
-    const serviceFrom = row.cells[3].querySelector('select').value; // DOJ, P_STS, P_JAG, P_SAG, P_HAG
+    const serviceFrom = row.cells[3].querySelector('select.service-from').value; // DOJ, P_STS, P_JAG, P_SAG, P_HAG
+    const anchorMode = row.cells[4].querySelector('select.anchor-mode').value;   // same_date, jan1_same_year, jan1_next_year
     if (!criteria[rank]) criteria[rank] = {};
-    criteria[rank][criteriaName] = { value, serviceFrom };
+    criteria[rank][criteriaName] = { value, serviceFrom, anchorMode };
   });
   return criteria;
 }
@@ -299,8 +328,11 @@ function eligible(off, targetRank, now, crit) {
   const C = crit[targetRank] || {};
   const need = (name) => C[name] ? C[name].value : null;
   const from = (name, fallbackToken) => {
-    const token = (C[name] && C[name].serviceFrom) || fallbackToken;
-    return getDateFor(off, token);
+    const rule = C[name];
+    const token = (rule && rule.serviceFrom) || fallbackToken;
+    const raw = getDateFor(off, token);
+    const mode = (rule && rule.anchorMode) || "same_date";
+    return anchorize(raw, mode);
   };
 
   if (targetRank === "STS") {
@@ -352,8 +384,8 @@ function executeSimulation() {
     return;
   }
 
-  // 0) Hard reset run-scoped state
-  monthlyStats = {};                 // fresh analytics per run
+  // Reset analytics & shared state for a fresh run
+  monthlyStats = {};
   window.monthlyStats = monthlyStats;
   window.resultData = null;
   window.originalDatesMap = null;
@@ -362,53 +394,40 @@ function executeSimulation() {
   const criteria = readPromotionCriteria();
   const startDate = parseDate(document.getElementById('startDate').value);
 
-  // 1) Deep-copy officers so we never mutate OFFICERS across runs
-  const officers = OFFICERS.map((o, i) => ({
-    originalIndex: i,
-    ...JSON.parse(JSON.stringify(o))  // cheap deep copy of each row
-  }));
+  // Deep-copy officers so promotions don't stack across runs
+  const officers = OFFICERS.map((o, i) => ({ originalIndex: i, ...JSON.parse(JSON.stringify(o)) }));
 
-  // 2) Last retirement bound
+  // Determine the last retirement date to bound the loop
   const lastRet = officers.reduce((mx, o) => {
     const r = parseDate(o.Retirement);
     return (!mx || (r && r > mx)) ? r : mx;
   }, null) || startDate;
 
-  // 3) Vacancies at start (capacity minus incumbents)
   const ranksAll = ["JTS","STS","JAG","SAG","HAG","Apex"];
   const incumbents = Object.fromEntries(ranksAll.map(r => [r, 0]));
-  officers.forEach(o => {
-    const rk = (o.CurrentRank || o['Current Rank'] || '').trim();
-    if (incumbents[rk] !== undefined) incumbents[rk]++;
-  });
-  const vacancies = Object.fromEntries(
-    ranksAll.map(r => [r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))])
-  );
+  officers.forEach(o => { const rk = (o.CurrentRank || o['Current Rank'] || '').trim(); if (incumbents[rk] !== undefined) incumbents[rk]++; });
+  const vacancies = Object.fromEntries(ranksAll.map(r => [r, Math.max(0, (capacity[r] ?? 0) - (incumbents[r] ?? 0))]));
 
   function promote(off, targetRank, when, mKey) {
     const feeder = FEEDER[targetRank]; if (!feeder) return;
     const keyMap = { STS:'P_STS', JAG:'P_JAG', SAG:'P_SAG', HAG:'P_HAG', Apex:'P_Apex' };
     off[keyMap[targetRank]] = when.toISOString();
     off.CurrentRank = targetRank;
-
-    // consume a vacancy in target, create one in feeder
     vacancies[targetRank] = Math.max(0, (vacancies[targetRank] ?? 0) - 1);
     vacancies[feeder] = (vacancies[feeder] ?? 0) + 1;
-
     ensureMonthLevel(mKey, feeder);
     monthlyStats[mKey][feeder].vacanciesCreated += 1;
-
     ensureMonthLevel(mKey, targetRank);
     monthlyStats[mKey][targetRank].promotionsMade += 1;
   }
 
-  // 4) Month-by-month loop
+  // Run simulation month-by-month
   let now = new Date(startDate);
   while (now <= lastRet) {
     const windowEnd = addMonths(now, 1);
     const mKey = monthKey(now);
 
-    // Eligible lists at month start (for all target ranks)
+    // 1) Eligible lists for each target rank at the start of the month
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
       const feeder = FEEDER[targetRank];
       const candidates = officers
@@ -416,12 +435,12 @@ function executeSimulation() {
         .filter(off => (off.CurrentRank || '').toUpperCase() === feeder.toUpperCase())
         .filter(off => eligible(off, targetRank, now, criteria))
         .sort((a,b) => a.originalIndex - b.originalIndex);
+
       ensureMonthLevel(mKey, targetRank);
-      monthlyStats[mKey][targetRank].eligible =
-        candidates.map(c => ({ ID: c.ID, Name: c.Name ?? c['Name'] ?? c.ID }));
+      monthlyStats[mKey][targetRank].eligible = candidates.map(c => ({ ID: c.ID, Name: c.Name ?? c['Name'] ?? c.ID }));
     });
 
-    // Retirements in the window → vacancies
+    // 2) Retirements in the month → vacancy created at that rank
     officers.forEach(off => {
       const ret = parseDate(off.Retirement);
       if (ret && ret >= now && ret < windowEnd) {
@@ -433,7 +452,7 @@ function executeSimulation() {
       }
     });
 
-    // Promotions top-down
+    // 3) Promotions top-down in the month
     ["Apex","HAG","SAG","JAG","STS"].forEach(targetRank => {
       if ((vacancies[targetRank] ?? 0) <= 0) return;
       const feeder = FEEDER[targetRank];
@@ -453,7 +472,7 @@ function executeSimulation() {
     now = windowEnd;
   }
 
-  // 5) Preserve originals (for blue highlight)
+  // Store original promotion dates for forecast highlighting
   const originalDates = {};
   OFFICERS.forEach(o => {
     originalDates[o.ID] = {
@@ -465,7 +484,6 @@ function executeSimulation() {
     };
   });
 
-  // 6) Build result bundle (from mutated copies)
   const result = {
     startedOn: startDate.toISOString(),
     capacityPerRank: capacity,
@@ -492,12 +510,11 @@ function executeSimulation() {
   document.getElementById('result').innerHTML =
     `<pre>Capacity (sanctioned + deputation): ${JSON.stringify(capacity, null, 2)}\nFinal Vacancies: ${JSON.stringify(vacancies, null, 2)}</pre>`;
 
-  // Default filter date
   const filterInput = document.getElementById('filterDate');
   if (!filterInput.value) filterInput.value = startDate.toISOString().split('T')[0];
   recalcRanksAndDisplay(filterInput.value);
 
-  // Force rebuild the analytics chart immediately for the current dropdown level
+  // Initialize the analytics
   const level = document.getElementById('levelSelect').value;
   renderAnalytics(level);
 }
@@ -562,73 +579,131 @@ function recalcRanksAndDisplay(selectedDate) {
 }
 
 // ---------- Analytics UI ----------
+// ---------- Pretty Month Label ----------
+function prettyMonthLabel(mKey) {
+  // mKey is "YYYY-MM"
+  const [y, m] = mKey.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleString(undefined, { month: 'short' }) + " ’" + String(y).slice(-2);
+}
+
+// ---------- Improved Analytics Chart ----------
 let chartRef = null;
 
 function renderAnalytics(level) {
   const stats = window.monthlyStats || {};
   const months = Object.keys(stats).sort();
-  const labels = months;
+  const labels = months.map(prettyMonthLabel);
 
   const vacancies = months.map(m => (stats[m][level]?.vacanciesCreated) || 0);
   const promotions = months.map(m => (stats[m][level]?.promotionsMade) || 0);
   const eligibleCount = months.map(m => (stats[m][level]?.eligible?.length) || 0);
 
-  // Compute a sane dynamic cap for Y so bars don't "go infinite"
-  const maxVal = Math.max(0, ...vacancies, ...promotions, ...eligibleCount);
-  const yCap = (Number.isFinite(maxVal) ? maxVal : 0) + 2; // add a little headroom
+  // Separate caps for left (bars) and right (line) axes for readability
+  const leftMax  = Math.max(0, ...vacancies, ...promotions);
+  const rightMax = Math.max(0, ...eligibleCount);
 
-  const ctx = document.getElementById('monthlyChart');
-  if (chartRef) {
-    chartRef.destroy(); // ensure a clean rebuild every time
-    chartRef = null;
-  }
+  const canvas = document.getElementById('monthlyChart');
+  if (chartRef) { chartRef.destroy(); chartRef = null; }
 
-  chartRef = new Chart(ctx, {
+  chartRef = new Chart(canvas, {
     type: 'bar',
     data: {
       labels,
       datasets: [
-        { label: 'Vacancies Created', data: vacancies },
-        { label: 'Promotions Made', data: promotions },
-        { label: 'Eligible Officers', data: eligibleCount }
+        {
+          label: 'Vacancies Created',
+          data: vacancies,
+          borderRadius: 6,
+          maxBarThickness: 28,
+          categoryPercentage: 0.72,
+          barPercentage: 0.9,
+          yAxisID: 'yBars'
+        },
+        {
+          label: 'Promotions Made',
+          data: promotions,
+          borderRadius: 6,
+          maxBarThickness: 28,
+          categoryPercentage: 0.72,
+          barPercentage: 0.9,
+          yAxisID: 'yBars'
+        },
+        {
+          type: 'line',
+          label: 'Eligible Officers',
+          data: eligibleCount,
+          yAxisID: 'yLine',
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          fill: false
+        }
       ]
     },
     options: {
+      // keep non-responsive; height is fixed via CSS we added earlier
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      animation: { duration: 600, easing: 'easeOutQuart' },
       plugins: {
+        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 14 } },
         tooltip: {
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          padding: 10,
+          displayColors: true,
           callbacks: {
-            afterLabel: function(context) {
-              if (context.dataset.label !== 'Eligible Officers') return '';
-              const m = labels[context.dataIndex];
-              const list = (stats[m][level]?.eligible || []).map(o => o.Name || o.ID);
-              const shown = list.slice(0, 5);
-              const more = list.length > 5 ? ` (+${list.length - 5} more)` : '';
+            title: (items) => items[0].label, // already pretty month
+            footer: (items) => {
+              const vac = items.find(i => i.dataset.label === 'Vacancies Created')?.raw ?? 0;
+              const pro = items.find(i => i.dataset.label === 'Promotions Made')?.raw ?? 0;
+              const net = vac - pro;
+              return `Net vacancies: ${net}`;
+            },
+            afterLabel: (ctx) => {
+              if (ctx.dataset.label !== 'Eligible Officers') return '';
+              const monthKey = months[ctx.dataIndex];
+              const names = (stats[monthKey][level]?.eligible || []).map(o => o.Name || o.ID);
+              const shown = names.slice(0, 5);
+              const more = names.length > 5 ? ` (+${names.length - 5} more)` : '';
               return shown.length ? `\n${shown.join(', ')}${more}` : '';
             }
           }
         }
       },
       scales: {
-        x: { stacked: false },
-        y: {
+        x: {
+          grid: { display: false },
+          ticks: { maxRotation: 0, autoSkipPadding: 16 }
+        },
+        yBars: {
           beginAtZero: true,
+          suggestedMax: (Number.isFinite(leftMax) ? leftMax : 0) + 2,
+          grid: { color: 'rgba(0,0,0,0.06)' },
           ticks: { precision: 0 },
-          suggestedMax: yCap
+          title: { display: true, text: 'Vacancies / Promotions' }
+        },
+        yLine: {
+          position: 'right',
+          beginAtZero: true,
+          suggestedMax: (Number.isFinite(rightMax) ? rightMax : 0) + 2,
+          grid: { drawOnChartArea: false }, // keep the grid clean
+          ticks: { precision: 0 },
+          title: { display: true, text: 'Eligible' }
         }
       }
     }
   });
 
-  // Rebuild "Eligible Officers by Month" list (right card)
+  // Right-side list remains the same
   const el = document.getElementById('eligibleList');
   el.innerHTML = '';
   months.forEach(m => {
     const names = (stats[m][level]?.eligible || []).map(o => o.Name || o.ID);
     const row = document.createElement('div');
     row.className = 'month-row';
-    row.innerHTML = `<strong>${m}</strong> <span class="tag">${names.length} eligible</span><div style="font-size: 13px; margin-top: 4px;">${names.length ? names.join(', ') : '<em>None</em>'}</div>`;
+    row.innerHTML = `<strong>${prettyMonthLabel(m)}</strong> <span class="tag">${names.length} eligible</span><div style="font-size: 13px; margin-top: 4px;">${names.length ? names.join(', ') : '<em>None</em>'}</div>`;
     el.appendChild(row);
   });
 }
