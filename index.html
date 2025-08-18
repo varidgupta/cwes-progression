@@ -122,11 +122,17 @@
       <option>HAG</option>
       <option>Apex</option>
     </select>
+<label for="granularity" style="margin-left:12px;">Frequency:</label>
+<select id="granularity">
+  <option value="monthly">Monthly</option>
+  <option value="yearly" selected>Yearly</option>
+</select>
+
   </div>
 
   <div class="analytics">
     <div class="card">
-      <h3>Bar Graph (per month)</h3>
+      <h3>Bar Graph</h3>
       <canvas id="monthlyChart"></canvas>
     </div>
     <div class="card">
@@ -725,6 +731,175 @@ function renderAnalytics(level) {
 
   document.getElementById('levelSelect').addEventListener('change', (e) => { renderAnalytics(e.target.value); });
 });
+</script>
+
+<script>
+// ===== Injected by ChatGPT: Monthly ⇄ Yearly toggle support =====
+(function() {
+  function getGranularity() {
+    const sel = document.getElementById('granularity');
+    return sel ? sel.value : 'yearly';
+  }
+  // Keep one global chart instance (shadow existing if any)
+  window.chartRef = window.chartRef || null;
+
+  // New unified renderer; overrides previous renderAnalytics if defined earlier
+  window.renderAnalytics = function(level, mode) {
+    try {
+      const stats = window.monthlyStats || {};
+      const monthKeys = Object.keys(stats).sort(); // 'YYYY-MM'
+      const currentMode = mode || getGranularity();
+
+      // ---- Aggregators ----
+      const byMonth = () => {
+        const labels = monthKeys;
+        const vacancies = [];
+        const promotions = [];
+        const eligibleAvg = [];
+        const eligibleNamesByLabel = new Map();
+
+        monthKeys.forEach(m => {
+          const s = stats[m]?.[level];
+          const vac = s?.vacanciesCreated || 0;
+          const pro = s?.promotionsMade || 0;
+          const names = (s?.eligible || []).map(o => o.Name || o.ID);
+          vacancies.push(vac);
+          promotions.push(pro);
+          eligibleAvg.push(names.length);
+          eligibleNamesByLabel.set(m, new Set(names));
+        });
+
+        return { labels, vacancies, promotions, eligibleAvg, eligibleNamesByLabel, xTitle: 'Month', vacTitle: 'Vacancies / Promotions (totals)', eligTitle: 'Eligible (count)' };
+      };
+
+      const byYear = () => {
+        const yearKeys = [...new Set(monthKeys.map(m => m.slice(0,4)))].sort();
+        const agg = {};
+        yearKeys.forEach(y => (agg[y] = { vac:0, pro:0, eligCounts:[], eligNames:new Set() }));
+
+        monthKeys.forEach(m => {
+          const y = m.slice(0,4);
+          const s = stats[m]?.[level];
+          if (!s) return;
+          agg[y].vac += s.vacanciesCreated || 0;
+          agg[y].pro += s.promotionsMade || 0;
+          const names = (s.eligible || []).map(o => o.Name || o.ID);
+          agg[y].eligCounts.push(names.length);
+          names.forEach(n => agg[y].eligNames.add(n));
+        });
+
+        const labels = yearKeys;
+        const vacancies = yearKeys.map(y => agg[y].vac);
+        const promotions = yearKeys.map(y => agg[y].pro);
+        const eligibleAvg = yearKeys.map(y => {
+          const arr = agg[y].eligCounts;
+          return arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
+        });
+
+        const eligibleNamesByLabel = new Map(yearKeys.map(y => [y, agg[y].eligNames]));
+        return { labels, vacancies, promotions, eligibleAvg, eligibleNamesByLabel, xTitle: 'Year', vacTitle: 'Vacancies / Promotions (totals)', eligTitle: 'Eligible (yearly avg)' };
+      };
+
+      const data = (currentMode === 'monthly') ? byMonth() : byYear();
+
+      // ---- Chart ----
+      const canvas = document.getElementById('monthlyChart');
+      if (!canvas || typeof Chart === 'undefined') return;
+
+      if (window.chartRef) { try { window.chartRef.destroy(); } catch(e) {} window.chartRef = null; }
+
+      const leftMax  = Math.max(0, ...data.vacancies, ...data.promotions);
+      const rightMax = Math.max(0, ...data.eligibleAvg);
+
+      window.chartRef = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: data.labels,
+          datasets: [
+            { label: 'Vacancies Created', data: data.vacancies, borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.72, barPercentage: 0.9, yAxisID: 'yBars' },
+            { label: 'Promotions Made',  data: data.promotions, borderRadius: 6, maxBarThickness: 28, categoryPercentage: 0.72, barPercentage: 0.9, yAxisID: 'yBars' },
+            { type: 'line', label: (currentMode === 'monthly') ? 'Eligible (count)' : 'Eligible (yearly avg)', data: data.eligibleAvg, yAxisID: 'yLine', tension: 0.35, pointRadius: 3, pointHoverRadius: 5, fill: false }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 14 } },
+            tooltip: {
+              backgroundColor: 'rgba(0,0,0,0.85)',
+              padding: 10,
+              displayColors: true,
+              callbacks: {
+                title: items => `${(currentMode === 'monthly') ? 'Month' : 'Year'} ${items[0].label}`,
+                footer: items => {
+                  const vac = items.find(i => i.dataset.label.includes('Vacancies'))?.raw ?? 0;
+                  const pro = items.find(i => i.dataset.label.includes('Promotions'))?.raw ?? 0;
+                  return `Net vacancies: ${vac - pro}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 16 }, title: { display: true, text: data.xTitle } },
+            yBars: {
+              beginAtZero: true,
+              suggestedMax: (Number.isFinite(leftMax) ? leftMax : 0) + 2,
+              grid: { color: 'rgba(0,0,0,0.06)' },
+              ticks: { precision: 0 },
+              title: { display: true, text: data.vacTitle }
+            },
+            yLine: {
+              position: 'right',
+              beginAtZero: true,
+              suggestedMax: (Number.isFinite(rightMax) ? rightMax : 0) + 2,
+              grid: { drawOnChartArea: false },
+              ticks: { precision: 0 },
+              title: { display: true, text: data.eligTitle }
+            }
+          }
+        }
+      });
+
+      // ---- Right-hand eligible list ----
+      const el = document.getElementById('eligibleList');
+      if (el) {
+        el.innerHTML = '';
+        data.labels.forEach(lbl => {
+          const namesSet = data.eligibleNamesByLabel.get(lbl) || new Set();
+          const names = Array.from(namesSet);
+          const shown = names.slice(0, 20);
+          const more  = names.length > 20 ? ` (+${names.length - 20} more)` : '';
+          const row = document.createElement('div');
+          row.className = 'month-row';
+          row.innerHTML = `<strong>${lbl}</strong> <span class="tag">${(currentMode === 'monthly') ? names.length + ' eligible' : names.length + ' unique eligible'}</span><div style="font-size:13px;margin-top:4px;">${shown.length ? shown.join(', ') + more : '<em>None</em>'}</div>`;
+          el.appendChild(row);
+        });
+      }
+    } catch (e) {
+      console.error('renderAnalytics override error:', e);
+    }
+  };
+
+  // Hook granularity changes
+  document.addEventListener('DOMContentLoaded', function() {
+    const granSel = document.getElementById('granularity');
+    const levelSel = document.getElementById('levelSelect');
+    if (granSel) {
+      granSel.addEventListener('change', () => {
+        const level = (levelSel && levelSel.value) ? levelSel.value : 'Level-1';
+        window.renderAnalytics(level);
+      });
+    }
+    // Try an initial repaint after a small delay to allow data to be loaded
+    setTimeout(() => {
+      const level = (levelSel && levelSel.value) ? levelSel.value : 'Level-1';
+      try { window.renderAnalytics(level); } catch(e) {}
+    }, 100);
+  });
+})();
+// ===== End injected block =====
 </script>
 </body>
 </html>
