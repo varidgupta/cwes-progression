@@ -471,36 +471,29 @@ function executeSimulation() {
     const windowEnd = addMonths(now, 1);
     const mKey = monthKey(now);
     /* JTS June intake */
-    if (now.getMonth() === 5) { // June (0-based index)
-      const y = String(now.getFullYear());
-      const batchSize = jtsVacanciesPerYear[y] || 0;
-      if (batchSize > 0) {
-        const joinISO = new Date(now.getFullYear(), 5, 1).toISOString();
-        const half = Math.floor(batchSize / 2);
-        const drCount = batchSize - half; // DR gets the extra if odd
-        const pqCount = half;
+/* JTS June intake — TOP UP TO CAPACITY */
+if (now.getMonth() === 5) { // June (0-based index)
+  const batchSize = Math.max(0, vacancies['JTS'] || 0); // fill all current JTS vacancies
+  if (batchSize > 0) {
+    const joinISO = new Date(now.getFullYear(), 5, 1).toISOString();
+    const drCount = Math.ceil(batchSize / 2);  // DR gets the extra if odd
+    const pqCount = Math.floor(batchSize / 2);
 
-        // Create DR ids: YYYYDR1..drCount ; PQ ids: YYYYPQ1..pqCount
-        for (let i = 1; i <= drCount; i++) {
-          const id = `${y}DR${i}`;
-          officers.push(makeNewJTSHire(id, joinISO));
-          ensureMonthLevel(mKey, 'JTS');
-          monthlyStats[mKey]['JTS'].promotionsMade += 0; // no promotion, but ensures level exists
-        }
-        for (let i = 1; i <= pqCount; i++) {
-          const id = `${y}PQ${i}`;
-          officers.push(makeNewJTSHire(id, joinISO));
-          ensureMonthLevel(mKey, 'JTS');
-          monthlyStats[mKey]['JTS'].promotionsMade += 0;
-        }
-
-        // These hires consume JTS vacancies immediately
-        vacancies['JTS'] = Math.max(0, (vacancies['JTS'] || 0) - batchSize);
-
-        // Reset the counter for the year after intake
-        jtsVacanciesPerYear[y] = 0;
-      }
+    for (let i = 1; i <= drCount; i++) {
+      const id = `${now.getFullYear()}DR${i}`;
+      officers.push(makeNewJTSHire(id, joinISO));
+      ensureMonthLevel(mKey, 'JTS');
     }
+    for (let i = 1; i <= pqCount; i++) {
+      const id = `${now.getFullYear()}PQ${i}`;
+      officers.push(makeNewJTSHire(id, joinISO));
+      ensureMonthLevel(mKey, 'JTS');
+    }
+
+    // These hires consume ALL current JTS vacancies
+    vacancies['JTS'] = 0;
+  }
+}
 
 
     // 1) Eligible lists for each target rank at the start of the month
