@@ -210,7 +210,7 @@ function loadOfficerList() {
     .then(res => res.json())
     .then(data => {
       const today = new Date();
-      OFFICERS = data
+      officers = data.officers || data
         .filter(o => {
           const ret = o['RetirementDate'] || o['Date_of_Retirement'];
           if (!ret) return true; return parseDate(ret) >= today;
